@@ -1,9 +1,10 @@
 # План: BingX-адаптер (фаза 0)
 
 **Дата:** 2026-05-09
-**Статус:** первичный — требует фазы исследования API перед фазой имплементации
+**Статус:** актуальный — фаза 0.A (исследование API) закрыта, готов к фазе 0.B (каркас + публичные методы)
 **Автор:** Claude + пользователь
 **Связано:** [[plans/00-стратегия-проекта-2026-05-09]], [[бизнес/инструменты-bingx]], [[бизнес/риск-профиль]], [[бизнес/правила-торговли/мм-контр-стратегии]]
+**Источник API-данных:** официальная документация BingX docs-v3, https://bingx-api.github.io/docs-v3/#/en/info (V2-портал `bingx-api.github.io/docs/` редиректит туда). Аудит проведён 2026-05-09; конкретные эндпоинты и квирки — в [[бизнес/инструменты-bingx]] с прямыми ссылками.
 
 ---
 
@@ -204,14 +205,16 @@ class ExchangeAdapter(Protocol):
 - `client_order_id: str` (наш UUID — для идемпотентности и журнала)
 
 **Поведение:**
-1. Валидация локально (тики, лоты, min notional, нельзя attached_* при close-side).
-2. Подпись запроса.
-3. POST в endpoint размещения ордера.
-4. Если есть `attached_stop_loss` — после ack entry, размещаем stop-market reduce_only.
-5. Если шаг 4 не подтвердился за `STOP_PLACEMENT_TIMEOUT_S` — отменяем entry и закрываем позицию рыночным.
-6. Возвращаем `OpenOrder` для entry; информацию о связанных стопе/TP стратегия получит через `stream_user_events`.
+1. Локальная валидация (`pricePrecision` / `quantityPrecision` из `/openApi/swap/v2/quote/contracts`, `tradeMinUSDT`, нельзя `attached_*` при close-side).
+2. **Округление price/qty до разрешённой точности.** Квирк BingX (docs-v3, страница «Place Order»): «If the precision exceeds the allowed range, the API order will still be accepted but the value will be truncated» — биржа молча усечёт значение, и журнал разъедется с фактом. Адаптер округляет на стороне клиента **до** подписи.
+3. Подпись запроса (HMAC-SHA256 по сортированной по ASCII строке параметров; см. §5.2).
+4. POST `/openApi/swap/v2/trade/order`. Атомарность entry + SL/TP в одном теле:
+   - Поля `stopLoss` и `takeProfit` принимаются как **stringified JSON-объекты** (не как plain numbers). Пример из docs: `takeProfit='{"type":"TAKE_PROFIT_MARKET","stopPrice":31968.0,"price":31968.0,"workingType":"MARK_PRICE"}'`.
+   - `workingType` фиксируем `MARK_PRICE` для всех защитных ордеров (снижает риск ловли спот-фитиля при stop hunt — см. [[бизнес/правила-торговли/мм-контр-стратегии]] п.1).
+5. Если в ack пришёл `code != 0` или ордер размещён без подтверждённого SL — компенсирующее `close_position(symbol)` + ALERT (см. §3 «Атомарность entry+stop»). Это запасной путь: для штатных POST с `attached_stop_loss` BingX ставит SL атомарно, дополнительный шаг не нужен.
+6. Возвращаем `OpenOrder` для entry; статусы связанных SL/TP стратегия получит через `stream_user_events` (`ORDER_TRADE_UPDATE`).
 
-**Идемпотентность:** одинаковый `client_order_id` → сервер вернёт существующий ордер (если BingX поддерживает). Если не поддерживает — наш ack-кэш на стороне адаптера (in-memory dict + persistence в SQLite) защищает от повторов после рестарта.
+**Идемпотентность:** на стороне BingX поле — `clientOrderID` (так в payload-примере Place Order в docs-v3) либо `clientOrderId` (так в request-list Cancel Order в той же странице) — **в docs встречаются обе формы для одного и того же поля**. Адаптер использует одну (`clientOrderID` как в payload Place Order) и валидирует integration-тестом на VST в фазе 0.D. Длина 1–40 символов, сервер приводит к lowercase, уникальность в рамках аккаунта. Адаптер дополнительно держит in-memory ack-кэш + SQLite persistence на случай повторов после рестарта.
 
 ### 4.2 `close_position(symbol)` — kill switch
 
@@ -225,12 +228,15 @@ class ExchangeAdapter(Protocol):
 - Гарантирует **at-least-once** доставку: при reconnect делает `get_open_orders` + `get_positions` + `get_balance` и эмитит синтетические события «sync» (отметка, что это reconcile, а не свежее событие).
 - При расхождении (например, ордер исполнился во время разрыва, но событие потеряно) — адаптер логирует WARNING и эмитит правильное событие. Стратегия должна быть толерантна к дубликатам (по `client_order_id`).
 
-### 4.4 `get_klines` — пагинация и rate limit
+### 4.4 `get_klines` — пагинация, форматы интервалов, rate limit
 
-- BingX лимитирует запрос свечей по количеству (типично 500–1500). Для бэктеста на 6 месяцев на 15m нужно ~17 500 свечей → 12–35 запросов.
-- Адаптер сам разбивает запрос на чанки, склеивает, дедуплицирует по `open_time`.
-- Чтит rate limit: внутренний bucket-токен, при `429` экспоненциальный backoff.
-- Для бэктестов есть отдельный режим: `bulk=True` с настраиваемой паузой между запросами и progress-логом.
+- **Эндпоинт:** `GET /openApi/swap/v3/quote/klines` (без подписи). Параметры: `symbol` (формат `BTC-USDT` с дефисом), `interval`, `startTime`/`endTime` (ms), `timeZone` (только 0 или 8), `limit` (default 500, **max 1440**).
+- **Формат свечи в REST V3:** только `open/high/low/close/volume/time` (open_time). **Нет `n` (число трейдов) и `q` (turnover/quote volume)** — если они нужны для фич, тянем через WS-канал `<symbol>@kline_<interval>` (там полный набор: T/c/h/i/l/n/o/q/s/t/v).
+- **Разные форматы `interval` в REST и WS:** REST принимает `1m`, `15m`, `1h`. WS — `1min`, `15min`, `1h`. Адаптер маппит обе формы внутри в общую доменную модель.
+- **Бэктест 6 мес 15m:** ~17 500 свечей → **13 чанков по 1440** с пагинацией по `endTime`. Под глобальный лимит market data 500/10s (см. §6) — спокойно укладывается даже с consecutive bulk fetch.
+- Адаптер сам разбивает запрос на чанки, склеивает, дедуплицирует по `time` (open).
+- Чтит rate limit: использует HTTP-заголовки `X-RateLimit-Requests-Remain` / `X-RateLimit-Requests-Expire` для адаптивного backoff; при перегрузке BingX блокирует ключ на ~5 минут (docs-v3, Frequency Limit).
+- Для бэктестов отдельный режим `bulk=True` с настраиваемой паузой между запросами и progress-логом.
 
 ---
 
@@ -290,24 +296,38 @@ class ExchangeAdapter(Protocol):
 
 ---
 
-## 7. Известные квирки BingX (черновик — заполняется в фазе исследования)
+## 7. Известные квирки BingX (после аудита docs-v3, 2026-05-09)
 
-> ⚠️ Сейчас здесь **гипотезы** на основе чужих обзоров и ритейл-знаний. Каждую — подтвердить чтением официальной документации в фазе 0.A. Если факт противоречит — обновляем здесь и заполняем `бизнес/инструменты-bingx.md`.
+Полные ссылки и raw-цитаты — в [[бизнес/инструменты-bingx]] §«Особенности API». Здесь — сжатый список с пометкой состояния («подтверждено в docs» / «требует проверки на VST в фазе 0.B»). Источники-эндпоинты приведены прямыми путями `/openApi/...` — каждый такой путь есть как отдельная страница в docs-v3 (https://bingx-api.github.io/docs-v3/#/en/info → раздел USDT-M Perp Futures).
 
-Кандидаты на проверку:
-
-- **VST (Virtual Simulated Trading)** — у BingX это эквивалент testnet. URL отличается; ключи отдельные. Используем для всей фазы 0 и фазы 1 (тестнет 4 недели).
-- **Demo / Real разделение по типу аккаунта**, не только по URL — уточнить.
-- **Различия perp vs swap** — у BingX есть USDT-M perp и Coin-M perp. Нам нужен USDT-M. Проверить, что endpoint-ы одинаковые / разные.
-- **Position mode**: hedge vs one-way. У BingX оба доступны. Принудительно ставим one-way при `connect()`.
-- **Stop-loss как часть entry-ордера** — поддерживается ли «attached SL/TP» в одной операции, или нужно отдельным ордером.
-- **`reduce_only` flag** — поддерживается на стопах? Нам критично.
-- **Лимиты подключений WS**: сколько подписок на одно соединение, сколько одновременных соединений на ключ.
-- **Rate limits REST**: классический X-MBX-USED-WEIGHT или другой формат? Какие веса у каких endpoint?
-- **Funding interval** — обычно 8ч. Уточнить, есть ли инструменты с другими интервалами (4ч у некоторых перпов).
-- **Минимальный notional** для BTCUSDT — критично для фазы 1 на $1000 капитала. Если minNotional > $50, риск $10 на сделке + малый стоп → notional меньше минимума → сделки невозможны. Этот случай — **блокер фазы 1**, требует либо больший начальный капитал, либо переход на инструмент с меньшим минимумом.
-- **Слиппедж и спред на BTC-USDT** в наши торговые часы. Фиксируем замер в `бизнес/инструменты-bingx.md`.
-- **Поведение API в моменты ликвидаций / крупных движений** — известно ли о случаях задержек ack > 5 сек.
+| # | Квирк / факт | Состояние | Что меняется в адаптере |
+|---|---|---|---|
+| 1 | **Symbol с дефисом:** `BTC-USDT`, не `BTCUSDT`. Все trade/quote эндпоинты помечают `symbol` как «There must be a hyphen». | подтверждено в docs | Доменная `Symbol` нормализует дефис на входе. |
+| 2 | **VST (testnet) — отдельный домен.** REST `https://open-api-vst.bingx.com`, WS `wss://vst-open-api-ws.bingx.com/swap-market`. Подтверждение — описание `POST /openApi/swap/v2/trade/getVst`. Ключи VST отдельные от live. | подтверждено в docs | Адаптер берёт base URL из конфига; в `connect()` чекает `serverTime`. |
+| 3 | **USDT-M (`/openApi/swap/v2/...`) ≠ Coin-M (`/openApi/cswap/v1/...`).** Разные пути и разные WS-домены. Нам нужен только USDT-M. | подтверждено в docs | В `endpoints.py` фиксируем USDT-M пути; Coin-M не реализуем в фазе 0. |
+| 4 | **Position mode:** `POST /openApi/swap/v1/positionSide/dual` с `dualSidePosition: "true"` (hedge) / `"false"` (one-way). Глобально для всех контрактов; нельзя менять при наличии позиций/ордеров. | подтверждено в docs | `connect()` форсит one-way; ошибка при наличии активов — описана в `errors.py`. |
+| 5 | **Margin type — три значения:** `ISOLATED` / `CROSSED` / `SEPARATE_ISOLATED` (`POST /openApi/swap/v2/trade/marginType`), не два. | подтверждено в docs | Фиксируем `ISOLATED` (см. [[бизнес/риск-профиль]] — кросс запрещён). |
+| 6 | **`set_leverage`:** в hedge mode `side` ∈ {LONG, SHORT}; в one-way mode `side = "BOTH"` (LONG/SHORT не принимаются). | подтверждено в docs | В нашем one-way режиме адаптер шлёт `side="BOTH"`. |
+| 7 | **Атомарность entry+SL/TP в одном POST.** `POST /openApi/swap/v2/trade/order` принимает `stopLoss` и `takeProfit` как **stringified JSON-объекты** в body (пример из docs: `takeProfit='{"type":"TAKE_PROFIT_MARKET","stopPrice":31968.0,"price":31968.0,"workingType":"MARK_PRICE"}'`). | подтверждено в docs | Адаптер сериализует attached_stop_loss/attached_take_profit в JSON-строку; `workingType` фиксирован `MARK_PRICE`. Compensating-close остаётся как fallback на error в ack. |
+| 8 | **`reduceOnly` — только в one-way mode.** В hedge mode параметр игнорируется; направление задаётся `positionSide`. По умолчанию `false`. | подтверждено в docs | В наших закрывающих ордерах ставим `reduceOnly: true` (one-way всегда). |
+| 9 | **`closePosition: true`** доступно для `STOP_MARKET` / `TAKE_PROFIT_MARKET` — закрывающий ордер на всю позицию без явного qty. Удобно для kill switch и position-stop. | подтверждено в docs | Используем в `close_position(symbol)` и для трейлинг-стопа. |
+| 10 | **Точность молча усекается.** Если price/qty превосходят `pricePrecision`/`quantityPrecision` — биржа **не отвергает**, а **truncates** значение. | подтверждено в docs | Адаптер обязан округлять локально перед отправкой. Юнит-тест на округление обязателен. |
+| 11 | **Klines V3 (`/openApi/swap/v3/quote/klines`)** не отдаёт `n` (трейды) и `q` (turnover). Поля только `o/h/l/c/v/time`. WS-канал `<symbol>@kline_<interval>` даёт полный набор. | подтверждено в docs | Если фичам нужен `n`/`q` — стримим, не запрашиваем REST. `Candle` доменная модель имеет эти поля Optional. |
+| 12 | **Разный формат `interval` REST vs WS.** REST: `1m`, `15m`, `1h`. WS: `1min`, `15min`, `1h`. | подтверждено в docs | `mapping.py` маппит общую модель в обе формы. |
+| 13 | **`limit` свечей max 1440.** Для 6 мес 15m — ~13 чанков. | подтверждено в docs | Пагинация в `bulk` режиме. |
+| 14 | **WS лимиты подключений:** EN-доку: 200 топиков на 1 ws, 60 ws на 1 IP (error 80403 при превышении топиков). ZH-страница того же раздела указывает 240 ws на IP — **расхождение между EN и ZH версиями**. | подтверждено в docs (с расхождением) | Используем консервативные EN-цифры (60), на VST в фазе 0.B измерим фактический cap. |
+| 15 | **WS gzip + текстовый Ping/Pong.** Все ответы сервера сжаты gzip. Сервер шлёт текстовое `Ping` каждые 5 сек, клиент отвечает текстовым `Pong`. **Это не JSON-payload.** | подтверждено в docs | `ws.py` декомпрессит входящие фреймы; heartbeat-handler сравнивает строку, не парсит JSON. |
+| 16 | **listenKey TTL = 1 час.** Истёк — выпускаем новый и переподключаемся. | подтверждено в docs | Задача в `ws.py`: продлевать listenKey каждые 30 мин (буфер) через `POST /openApi/user/auth/userDataStream`. |
+| 17 | **User Data Stream без явного subscribe.** При подключении к `swap-market?listenKey=...` сервер пушит все типы пользовательских событий: `ORDER_TRADE_UPDATE`, `ACCOUNT_UPDATE`. Тип `LIQUIDATION` приходит как тип ордера в `ORDER_TRADE_UPDATE`. | подтверждено в docs | Один `stream_user_events` стрим, без управления подписками. |
+| 18 | **Подпись:** HMAC-SHA256 (64-char lowercase hex), header `X-BX-APIKEY`. Подписная строка = ASCII-сортированная конкатенация `key=value&...&timestamp=ms` **без URL-encoding**. URL-encoding только при сборке итогового URL и только для значений с `[`/`{`. `recvWindow` default 5000 мс. | подтверждено в docs | Алгоритм в `signer.py` 1:1, юнит-тест на тест-векторе из docs (Query String Example). |
+| 19 | **Server time sync обязателен.** `GET /openApi/swap/v2/server/time` → `serverTime`. Если `|timestamp - serverTime| > recvWindow` — реджект «expired». Default допуск 5 сек. | подтверждено в docs | `connect()` синхронизирует offset; пересчёт каждые N минут. |
+| 20 | **Rate limits per UID + per endpoint, независимы.** Заголовки `X-RateLimit-Requests-Remain` / `X-RateLimit-Requests-Expire`. При перегрузке блокировка на ~5 мин. Глобально market data — 500 req / 10 sec на ключ (changelog 2026-01-05). Backup-домен `open-api.bingx.io` — общий лимит 60 req/min, режим деградации. | подтверждено в docs | Bucket-token per-endpoint; при `429`/перегрузе exponential backoff с уважением `Retry-After`. |
+| 21 | **Funding interval per symbol = 1/2/4/8 часов.** Поле `fundingIntervalHours` в `/openApi/swap/v2/quote/premiumIndex`. BTC-USDT в примере docs — 8 ч. min/max funding rate per symbol — там же (для BTC-USDT ±0.3%). | подтверждено в docs | Стратегия читает `fundingIntervalHours` per symbol, не хардкодит 8 ч. |
+| 22 | **Минимальный notional BTC-USDT = $2 USDT** (`tradeMinUSDT=2` в `/openApi/swap/v2/quote/contracts`, raw-пример docs). **Это снимает блокер фазы 1** — на $1000 капитала с риском 1% и стопом 1% notional ≈ $1000, что значительно выше минимума. | подтверждено в docs (пример из эндпоинта) | Решение для фазы 1: BTC-USDT остаётся (см. §10 п.7). |
+| 23 | **Идемпотентность ордеров:** поле `clientOrderID` (так в payload Place Order) либо `clientOrderId` (так в request-list Cancel Order в той же странице). Разногласие в наименовании в самих docs. Длина 1–40 символов, сервер приводит к lowercase. | подтверждено в docs (с расхождением) | Адаптер шлёт `clientOrderID` (как в Place Order), сверяет integration-тестом. |
+| 24 | **`Cancel All After`** (`POST /openApi/swap/v2/trade/cancelAllAfter`) — биржевой dead-man timer: если адаптер не «погладит» биржу за N мс, она сама отменит все ордера. | подтверждено в docs | Дополняет клиентский kill switch на сетевые дисконнекты. Включаем на старте сессии, пингуем периодически. |
+| 25 | **Слиппедж и спред на BTC-USDT.** Не уточнено в docs (это рыночные данные). Замер на VST (фаза 0.B–0.E) и зафиксировать в [[бизнес/инструменты-bingx]]. | требует измерения на VST | Бенчмарк latency и slippage (см. §9.1 «Bench/measurement»). |
+| 26 | **Поведение API в моменты ликвидаций / крупных движений.** Не уточнено в docs (нет SLA на ack). | требует наблюдения | Адаптер логирует ack-latency на каждый ордер; смотрим эмпирику до фазы 1 deploy. |
 
 ---
 
@@ -396,8 +416,12 @@ class ExchangeAdapter(Protocol):
 6. **`client_order_id` не поддерживается / не идемпотентен.**
    - Митигация: in-memory ack-кэш + SQLite persistence на адаптере. На рестарте restore + reconcile через `get_open_orders`.
 
-7. **Минимальный notional на BTC-USDT слишком высокий для $1k капитала.**
-   - Митигация: проверяем в фазе 0.A. Если минимум > $50 при риске 1% и стопе 1% — переходим на инструмент с меньшим минимумом или повышаем стартовый капитал. Решение фиксируем в [[plans/00-стратегия-проекта-2026-05-09]] обновлением фазы 1.
+7. **Минимальный notional на BTC-USDT слишком высокий для $1k капитала.** — **Снято после аудита docs 2026-05-09.**
+   - Факт: `tradeMinUSDT = 2 USDT` для BTC-USDT в примере ответа `GET /openApi/swap/v2/quote/contracts` (docs-v3, страница «USDT-M Perp Futures symbols»). Полная запись минимумов — [[бизнес/инструменты-bingx]] §«Крипта (USDT-M perpetual)».
+   - Расчёт фазы 1: эквити $1 000, риск 1% = $10 на сделку, стоп 1% от цены → notional ≈ $1 000, что **в 500 раз выше** минимума $2 USDT.
+   - Резерв: даже при стопе 5% (худший случай для маленьких сетапов) notional = $200 — всё равно >> $2.
+   - Подтверждение на VST: integration-тест в фазе 0.B вытащит реальный `tradeMinUSDT` для BTC-USDT и сверит с примером в docs (защита от тихого изменения).
+   - Решение: BTC-USDT остаётся основным инструментом фазы 1 без правок мастер-плана.
 
 8. **Подпись HMAC реализована неверно — все приватные запросы 401.**
    - Митигация: тест-вектора из docs, ранний прогон `get_balance` на VST как smoke. Если падает — фокусированный фикс до любых ордеров.
@@ -414,12 +438,12 @@ class ExchangeAdapter(Protocol):
 
 Адаптер строится поэтапно. Каждая фаза заканчивается **рабочим коммитом**.
 
-### Фаза 0.A — Исследование (1–2 сессии)
-- Аудит официальной документации BingX (REST + WS).
-- Проверка кандидатов из §7 «Известные квирки», заполнение [[бизнес/инструменты-bingx]] реальными значениями для BTCUSDT.
-- Решение по минимальному notional (см. §10 п.7).
-- Обновление этого плана секциями §4 и §7 фактическими данными.
-- Артефакт: обновлённый план + заполненный файл инструментов BingX.
+### Фаза 0.A — Исследование (1–2 сессии) — ЗАКРЫТА 2026-05-09
+- ✅ Аудит официальной документации BingX docs-v3 (REST + WS, USDT-M perp).
+- ✅ §7 переписана: 26 квирков с пометкой «подтверждено в docs» / «требует проверки на VST».
+- ✅ [[бизнес/инструменты-bingx]] заполнен числами для BTC-USDT и ETH-USDT, ссылки на эндпоинты-источники.
+- ✅ Блокер «min notional» снят: `tradeMinUSDT=2` >> $1 000 фаза-1 notional (см. §10 п.7).
+- Артефакт: коммит на ветке `claude/infallible-proskuriakova-6e981c`.
 - **НЕТ кода.**
 
 ### Фаза 0.B — Каркас + публичные методы (1–2 сессии)
@@ -466,28 +490,37 @@ class ExchangeAdapter(Protocol):
 
 ## 13. Что СЕЙЧАС, в ближайшую сессию
 
-После этого плана **следующая сессия — фаза 0.A (только исследование, БЕЗ кода).**
+Фаза 0.A закрыта. **Следующая сессия — фаза 0.B (каркас + публичные методы).**
 
-Конкретные задачи следующей сессии:
-1. Открыть официальную документацию BingX (REST + WS, USDT-M perp).
-2. Подтвердить/опровергнуть каждый пункт из §7 «Известные квирки».
-3. Заполнить [[бизнес/инструменты-bingx]] значениями для BTCUSDT (плечо, тики, лоты, минимумы, fees, funding interval, эндпоинты, лимиты).
-4. Решение по минимальному notional vs стартовый капитал — зафиксировать в этом плане и в [[plans/00-стратегия-проекта-2026-05-09]] §4 фаза 1, если потребуется правка.
-5. Обновить §4 и §7 этого плана фактическими данными.
+Конкретные задачи следующей сессии (из §11, фаза 0.B):
+1. `pyproject.toml`/`requirements`: фиксируем `httpx`, `websockets`, `pydantic-settings`, `respx` (для тестов), `pytest-asyncio`, `python-dotenv`. Версии — пиннуем после оценки.
+2. Структура `adapters/base.py`, `adapters/errors.py`, `adapters/bingx/` по §3.
+3. Доменные dataclasses (`Symbol`, `SymbolMeta`, `Candle`, `Ticker`, `FundingRate`, `Position`, `OpenOrder`, `Fill`, `AccountBalance`, `OrderRequest`, `UserEvent`).
+4. `BingXAdapter` skeleton: все методы `raise NotImplementedError`. Конструктор берёт base URL из конфига (live/VST), HTTP-клиент инициализирован с retry-policy.
+5. Реализация **публичных** REST-методов (без подписи): `list_symbols` (`/openApi/swap/v2/quote/contracts`), `get_klines` (`/openApi/swap/v3/quote/klines`), `get_funding_rate` (`/openApi/swap/v2/quote/premiumIndex`), `get_funding_history` (`/openApi/swap/v2/quote/fundingRate`), `get_open_interest` (`/openApi/swap/v2/quote/openInterest`), `get_ticker` (`/openApi/swap/v2/quote/ticker`).
+6. Базовый WS-клиент: подключение к `wss://open-api-swap.bingx.com/swap-market` (live) / `wss://vst-open-api-ws.bingx.com/swap-market` (VST), gzip-декомпрессия, текстовый Ping/Pong, sub/unsub-протокол. `stream_klines`, `stream_ticker` — поверх.
+7. Unit-тесты + интеграционная проба к публичному API (без ключа): достаём список контрактов и валидируем, что `tradeMinUSDT=2` для BTC-USDT (защита от тихого изменения).
+8. **Артефакт:** можно вызвать `await adapter.get_klines("BTC-USDT", "15m", since=...)` и получить список свечей.
 
-Только после фазы 0.A открываем фазу 0.B (каркас + код).
-
-Параллельно можно (другая сессия / другой контекст) написать `plans/04-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который уже зафиксирован в §3 этого документа.
+Параллельно (другая сессия / другой контекст) можно начать `plans/04-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
 
 ---
 
 ## 14. Артефакты этой сессии
 
-Создано:
+Сессия предыдущая (создание плана):
 - `plans/01-bingx-адаптер.md` (этот файл).
 - `бизнес/правила-торговли/усреднение-запрет.md`.
 - `бизнес/правила-торговли/мм-контр-стратегии.md`.
 - Обновлён `бизнес/INDEX.md` (добавлены ссылки на два новых правила).
+
+Сессия 2026-05-09 (фаза 0.A — исследование docs):
+- Заполнен [[бизнес/инструменты-bingx]] реальными числами для BTC-USDT и ETH-USDT, базовыми URL (live + VST, REST + WS), деталями подписи / rate limits / WS-каналов / klines / atomic SL/TP.
+- Переписан §7 этого плана: 26 пунктов с пометкой «подтверждено в docs» / «требует проверки на VST».
+- Уточнён §4.1 (place_order: stringified JSON для attached SL/TP, локальное округление, разногласие в имени `clientOrderID`/`clientOrderId`).
+- Уточнён §4.4 (klines: V3-формат, 1440 limit, разные интервалы REST vs WS).
+- Снят блокер фазы 1 (§10 п.7): `tradeMinUSDT=2` для BTC-USDT, $1 000 капитала проходит без правок мастер-плана.
+- Фаза 0.A помечена закрытой; §13 переключён на фазу 0.B.
 
 ---
 
