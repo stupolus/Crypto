@@ -1,0 +1,92 @@
+# Секреты — НИКОГДА
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+api_keys.yaml
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Obsidian
+.obsidian/workspace*
+.obsidian/cache
+.obsidian/plugins
+.obsidian/themes
+.trash/
+
+# Mac/Linux
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
+logs/
+
+# Данные (большие, не коммитить)
+data/candles/
+data/screener_events/
+data/liquidations/
+data/funding/
+data/oi/
+data/heatmap/
+data/news/
+data/raw/
+*.parquet
+*.feather
+*.h5
+*.duckdb
+*.sqlite
+*.sqlite3
+*.db
+
+# Бэктест-артефакты
+backtest_results/
+*.html
+notebook_outputs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Mypy / Ruff / pytest
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
