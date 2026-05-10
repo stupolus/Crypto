@@ -51,6 +51,13 @@ ENV/
 .obsidian/themes
 .trash/
 
+# Obsidian inbox — сырые материалы (видео/PDF/скрины/аудио/текст/ссылки).
+# В git едут только обработанные выжимки в бизнес/материалы/обработанное/.
+бизнес/inbox/**
+!бизнес/inbox/
+!бизнес/inbox/*/
+!бизнес/inbox/*/.gitkeep
+
 # Mac/Linux
 .DS_Store
 Thumbs.db

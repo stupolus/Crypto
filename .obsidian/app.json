@@ -1,0 +1,12 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "бизнес/материалы/обработанное/_attachments",
+  "showUnsupportedFiles": false,
+  "promptDelete": true,
+  "showInlineTitle": true,
+  "defaultViewMode": "source",
+  "livePreview": true,
+  "spellcheck": true
+}
