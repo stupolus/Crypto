@@ -1,0 +1,38 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": [
+    {
+      "contractId": "100",
+      "symbol": "BTC-USDT",
+      "quantityPrecision": 4,
+      "pricePrecision": 1,
+      "feeRate": 0.0005,
+      "makerFeeRate": 0.0002,
+      "takerFeeRate": 0.0005,
+      "tradeMinQuantity": 0.0001,
+      "tradeMinUSDT": 2,
+      "maxLongLeverage": 125,
+      "maxShortLeverage": 125,
+      "currency": "USDT",
+      "asset": "BTC",
+      "status": 1
+    },
+    {
+      "contractId": "101",
+      "symbol": "ETH-USDT",
+      "quantityPrecision": 2,
+      "pricePrecision": 2,
+      "feeRate": 0.0005,
+      "makerFeeRate": 0.0002,
+      "takerFeeRate": 0.0005,
+      "tradeMinQuantity": 0.01,
+      "tradeMinUSDT": 2,
+      "maxLongLeverage": 125,
+      "maxShortLeverage": 125,
+      "currency": "USDT",
+      "asset": "ETH",
+      "status": 1
+    }
+  ]
+}

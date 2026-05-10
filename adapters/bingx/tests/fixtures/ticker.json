@@ -1,0 +1,18 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": {
+    "symbol": "BTC-USDT",
+    "priceChange": "120.5",
+    "priceChangePercent": "0.20",
+    "lastPrice": "60500.7",
+    "lastQty": "0.0012",
+    "openPrice": "60380.2",
+    "highPrice": "60900.0",
+    "lowPrice": "60100.0",
+    "volume": "1234.5678",
+    "quoteVolume": "74567890.12",
+    "openTime": 1758211200000,
+    "closeTime": 1758297599999
+  }
+}
