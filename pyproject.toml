@@ -79,7 +79,7 @@ ignore_missing_imports = true
 # ─── pytest ──────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["adapters/bingx/tests", "core/risk/tests"]
+testpaths = ["adapters/bingx/tests", "core/risk/tests", "core/backtest/tests"]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
 ]
@@ -91,8 +91,12 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["adapters/bingx", "core/risk"]
-omit = ["adapters/bingx/tests/*", "core/risk/tests/*"]
+source = ["adapters/bingx", "core/risk", "core/backtest"]
+omit = [
+    "adapters/bingx/tests/*",
+    "core/risk/tests/*",
+    "core/backtest/tests/*",
+]
 
 [tool.coverage.report]
 fail_under = 70
