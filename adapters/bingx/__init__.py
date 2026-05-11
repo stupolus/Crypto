@@ -24,14 +24,17 @@ from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
 from adapters.bingx.private import PrivateAPI
 from adapters.bingx.private_models import (
     Balance,
+    EntryOrderType,
     Fill,
     MarginType,
     Order,
+    OrderRequest,
     OrderSide,
     OrderStatus,
     OrderType,
     Position,
     PositionSide,
+    TimeInForce,
 )
 from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings, load_settings
@@ -49,12 +52,14 @@ __all__ = [
     "BingXSettings",
     "ConfigError",
     "Contract",
+    "EntryOrderType",
     "Fill",
     "InvalidResponseError",
     "Kline",
     "MarginType",
     "NetworkError",
     "Order",
+    "OrderRequest",
     "OrderSide",
     "OrderStatus",
     "OrderType",
@@ -67,6 +72,7 @@ __all__ = [
     "ServerTime",
     "ServerTimeSyncer",
     "Ticker",
+    "TimeInForce",
     "WebSocketError",
     "get_default_config",
     "load_config",

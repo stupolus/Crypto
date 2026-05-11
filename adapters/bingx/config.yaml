@@ -82,6 +82,10 @@ rest_endpoints:
   set_margin_type: /openApi/swap/v2/trade/marginType
   set_leverage: /openApi/swap/v2/trade/leverage
   set_position_mode: /openApi/swap/v1/positionSide/dual
+  # Ордерные методы (фаза 0.D part 1). POST + DELETE на /trade/order.
+  place_order: /openApi/swap/v2/trade/order
+  cancel_order: /openApi/swap/v2/trade/order
+  cancel_all_orders: /openApi/swap/v2/trade/allOpenOrders
 
 # ─── Klines ──────────────────────────────────────────────────────────────────
 # Источник: docs-v3 → USDT-M Perp Futures → Get K-Line Data.

@@ -58,13 +58,12 @@ async def test_get_balance_parses_decimal_fields(cfg: BingXConfig) -> None:
             }
         ]
     )
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
-        mock.get(cfg.rest_endpoints.balance).mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+        mock.get(cfg.rest_endpoints.balance).mock(return_value=httpx.Response(200, json=payload))
         balances = await PrivateAPI(client).get_balance()
     assert len(balances) == 1
     b = balances[0]
@@ -88,13 +87,12 @@ async def test_get_balance_handles_object_payload(cfg: BingXConfig) -> None:
             "usedMargin": "0",
         }
     )
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
-        mock.get(cfg.rest_endpoints.balance).mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+        mock.get(cfg.rest_endpoints.balance).mock(return_value=httpx.Response(200, json=payload))
         balances = await PrivateAPI(client).get_balance()
     assert len(balances) == 1
     assert balances[0].asset == "USDT"
@@ -124,13 +122,12 @@ async def test_get_positions_parses_position_fields(cfg: BingXConfig) -> None:
             }
         ]
     )
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
-        mock.get(cfg.rest_endpoints.positions).mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+        mock.get(cfg.rest_endpoints.positions).mock(return_value=httpx.Response(200, json=payload))
         positions = await PrivateAPI(client).get_positions("BTC-USDT")
     assert len(positions) == 1
     p = positions[0]
@@ -143,9 +140,7 @@ async def test_get_positions_parses_position_fields(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_get_positions_validates_symbol_hyphen(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
         with pytest.raises(ValueError):
             await PrivateAPI(client).get_positions("BTCUSDT")
 
@@ -178,9 +173,10 @@ async def test_get_open_orders_unwraps_orders_field(cfg: BingXConfig) -> None:
             ]
         }
     )
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         mock.get(cfg.rest_endpoints.open_orders).mock(
             return_value=httpx.Response(200, json=payload)
@@ -217,13 +213,12 @@ async def test_get_fills_unwraps_fill_history_orders(cfg: BingXConfig) -> None:
             ]
         }
     )
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
-        mock.get(cfg.rest_endpoints.fills).mock(
-            return_value=httpx.Response(200, json=payload)
-        )
+        mock.get(cfg.rest_endpoints.fills).mock(return_value=httpx.Response(200, json=payload))
         fills = await PrivateAPI(client).get_fills("BTC-USDT", limit=10)
     assert len(fills) == 1
     assert fills[0].trade_id == "t1"
@@ -233,9 +228,7 @@ async def test_get_fills_unwraps_fill_history_orders(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_get_fills_rejects_invalid_limit(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
         api = PrivateAPI(client)
         with pytest.raises(ValueError):
             await api.get_fills("BTC-USDT", limit=0)
@@ -248,9 +241,10 @@ async def test_get_fills_rejects_invalid_limit(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_set_margin_mode_sends_isolated_param(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         route = mock.post(cfg.rest_endpoints.set_margin_type).mock(
             return_value=httpx.Response(200, json=_ok({}))
@@ -265,9 +259,10 @@ async def test_set_margin_mode_sends_isolated_param(cfg: BingXConfig) -> None:
 @pytest.mark.asyncio
 async def test_set_margin_mode_idempotent_on_80012(cfg: BingXConfig) -> None:
     """code=80012 («No need to switch») — успех."""
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         mock.post(cfg.rest_endpoints.set_margin_type).mock(
             return_value=httpx.Response(200, json=_err(80012, "No need to switch"))
@@ -277,9 +272,10 @@ async def test_set_margin_mode_idempotent_on_80012(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_set_margin_mode_propagates_other_errors(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         mock.post(cfg.rest_endpoints.set_margin_type).mock(
             return_value=httpx.Response(200, json=_err(80099, "permission denied"))
@@ -293,9 +289,7 @@ async def test_set_margin_mode_propagates_other_errors(cfg: BingXConfig) -> None
 
 @pytest.mark.asyncio
 async def test_set_leverage_validates_range(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
         api = PrivateAPI(client)
         with pytest.raises(ValueError):
             await api.set_leverage("BTC-USDT", 0)
@@ -305,9 +299,10 @@ async def test_set_leverage_validates_range(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_set_leverage_sends_params(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         route = mock.post(cfg.rest_endpoints.set_leverage).mock(
             return_value=httpx.Response(200, json=_ok({}))
@@ -323,9 +318,10 @@ async def test_set_leverage_sends_params(cfg: BingXConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_set_position_mode_one_way_sends_false_string(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         route = mock.post(cfg.rest_endpoints.set_position_mode).mock(
             return_value=httpx.Response(200, json=_ok({}))
@@ -338,13 +334,290 @@ async def test_set_position_mode_one_way_sends_false_string(cfg: BingXConfig) ->
 @pytest.mark.asyncio
 async def test_set_position_mode_idempotent_on_no_need_message(cfg: BingXConfig) -> None:
     """Сообщение «no need to switch» = успех, даже на неизвестном коде."""
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         mock.post(cfg.rest_endpoints.set_position_mode).mock(
-            return_value=httpx.Response(
-                200, json=_err(99999, "no need to switch position side")
-            )
+            return_value=httpx.Response(200, json=_err(99999, "no need to switch position side"))
         )
         await PrivateAPI(client).set_position_mode(one_way=True)
+
+
+# ─── place_order / cancel / close (фаза 0.D part 1) ────────────────────────
+
+
+import json as _json  # noqa: E402
+
+from adapters.bingx.private_models import OrderRequest  # noqa: E402
+
+
+def _order_ok_payload(order_id: str = "1001", status: str = "NEW") -> dict[str, Any]:
+    return {
+        "order": {
+            "orderId": order_id,
+            "clientOrderID": "abcd1234",
+            "symbol": "BTC-USDT",
+            "side": "BUY",
+            "positionSide": "BOTH",
+            "type": "MARKET",
+            "status": status,
+            "price": "0",
+            "origQty": "0.001",
+            "executedQty": "0",
+            "avgPrice": "0",
+            "stopPrice": "0",
+            "time": 1_700_000_001_000,
+            "updateTime": 1_700_000_001_500,
+            "reduceOnly": False,
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_place_order_market_with_attached_sl_serializes_stop_loss_as_json(
+    cfg: BingXConfig,
+) -> None:
+    """Атомарный entry+SL: ``stopLoss`` — stringified JSON (квирк §7 п.7)."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        route = mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(200, json=_ok(_order_ok_payload()))
+        )
+        req = OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            attached_stop_loss=Decimal("60000"),
+            client_order_id="my-uuid-001",
+        )
+        result = await PrivateAPI(client).place_order(req)
+
+    assert result.order_id == "1001"
+    sent = dict(route.calls.last.request.url.params)
+    assert sent["symbol"] == "BTC-USDT"
+    assert sent["side"] == "BUY"
+    assert sent["type"] == "MARKET"
+    assert sent["quantity"] == "0.001"
+    assert sent["clientOrderID"] == "my-uuid-001"
+    # stopLoss — JSON-строка с STOP_MARKET + MARK_PRICE.
+    parsed = _json.loads(sent["stopLoss"])
+    assert parsed["type"] == "STOP_MARKET"
+    # Квирк §7 п.32: stopPrice — JSON-число, не строка.
+    assert parsed["stopPrice"] == 60000
+    assert isinstance(parsed["stopPrice"], int | float)
+    assert parsed["workingType"] == "MARK_PRICE"
+
+
+@pytest.mark.asyncio
+async def test_place_order_limit_with_take_profit_includes_price_and_tif(
+    cfg: BingXConfig,
+) -> None:
+    """LIMIT order: price + timeInForce + takeProfit JSON-сериализован."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        payload = _order_ok_payload(order_id="2002")
+        payload["order"]["type"] = "LIMIT"
+        payload["order"]["price"] = "65000"
+        route = mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(200, json=_ok(payload))
+        )
+        req = OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="LIMIT",
+            quantity=Decimal("0.001"),
+            price=Decimal("65000"),
+            attached_stop_loss=Decimal("60000"),
+            attached_take_profit=Decimal("70000"),
+            time_in_force="IOC",
+        )
+        await PrivateAPI(client).place_order(req)
+
+    sent = dict(route.calls.last.request.url.params)
+    assert sent["type"] == "LIMIT"
+    assert sent["price"] == "65000"
+    assert sent["timeInForce"] == "IOC"
+    tp = _json.loads(sent["takeProfit"])
+    assert tp["type"] == "TAKE_PROFIT_MARKET"
+    assert tp["stopPrice"] == 70000
+    assert isinstance(tp["stopPrice"], int | float)
+
+
+def test_order_request_rejects_entry_without_stop_loss() -> None:
+    """Инвариант проекта: нет позиции без SL на бирже."""
+    with pytest.raises(ValueError, match="attached_stop_loss"):
+        OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+        )
+
+
+def test_order_request_rejects_reduce_only_with_stop_loss() -> None:
+    with pytest.raises(ValueError, match="reduce_only"):
+        OrderRequest(
+            symbol="BTC-USDT",
+            side="SELL",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            reduce_only=True,
+            attached_stop_loss=Decimal("60000"),
+        )
+
+
+def test_order_request_rejects_limit_without_price() -> None:
+    with pytest.raises(ValueError, match="LIMIT order requires price"):
+        OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="LIMIT",
+            quantity=Decimal("0.001"),
+            attached_stop_loss=Decimal("60000"),
+        )
+
+
+def test_order_request_rejects_market_with_price() -> None:
+    with pytest.raises(ValueError, match="MARKET order must not have price"):
+        OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            price=Decimal("65000"),
+            attached_stop_loss=Decimal("60000"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_requires_id_or_client_id(cfg: BingXConfig) -> None:
+    async with BingXClient(
+        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
+    ) as client:
+        api = PrivateAPI(client)
+        with pytest.raises(ValueError, match="order_id or client_order_id"):
+            await api.cancel_order("BTC-USDT")
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_sends_delete_with_order_id(cfg: BingXConfig) -> None:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        payload = _order_ok_payload(order_id="1001", status="CANCELED")
+        route = mock.delete(cfg.rest_endpoints.cancel_order).mock(
+            return_value=httpx.Response(200, json=_ok(payload))
+        )
+        result = await PrivateAPI(client).cancel_order("BTC-USDT", order_id="1001")
+    assert result.status == "CANCELED"
+    sent = dict(route.calls.last.request.url.params)
+    assert sent["orderId"] == "1001"
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_returns_empty_on_nothing_to_cancel(cfg: BingXConfig) -> None:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        mock.delete(cfg.rest_endpoints.cancel_all_orders).mock(
+            return_value=httpx.Response(200, json=_err(80018, "no orders to cancel"))
+        )
+        result = await PrivateAPI(client).cancel_all("BTC-USDT")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_close_position_on_flat_account_returns_none(cfg: BingXConfig) -> None:
+    """close_position идемпотентен: на flat-аккаунте — без действия."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        mock.delete(cfg.rest_endpoints.cancel_all_orders).mock(
+            return_value=httpx.Response(200, json=_ok({"orders": []}))
+        )
+        mock.get(cfg.rest_endpoints.positions).mock(return_value=httpx.Response(200, json=_ok([])))
+        result = await PrivateAPI(client).close_position("BTC-USDT")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_close_position_long_sends_sell_reduce_only_market(
+    cfg: BingXConfig,
+) -> None:
+    """close LONG = SELL reduce_only market на полный размер позиции."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        mock.delete(cfg.rest_endpoints.cancel_all_orders).mock(
+            return_value=httpx.Response(200, json=_ok({"orders": []}))
+        )
+        mock.get(cfg.rest_endpoints.positions).mock(
+            return_value=httpx.Response(
+                200,
+                json=_ok(
+                    [
+                        {
+                            "symbol": "BTC-USDT",
+                            "positionId": "p1",
+                            "positionSide": "BOTH",
+                            "positionAmt": "0.005",
+                            "avgPrice": "62000",
+                            "leverage": 3,
+                            "unrealizedProfit": "0",
+                        }
+                    ]
+                ),
+            )
+        )
+        place_route = mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(
+                200,
+                json=_ok(
+                    {
+                        "order": {
+                            "orderId": "9001",
+                            "symbol": "BTC-USDT",
+                            "side": "SELL",
+                            "positionSide": "BOTH",
+                            "type": "MARKET",
+                            "status": "FILLED",
+                            "price": "0",
+                            "origQty": "0.005",
+                            "executedQty": "0.005",
+                            "time": 1_700_000_000_000,
+                            "updateTime": 1_700_000_000_500,
+                            "reduceOnly": True,
+                        }
+                    }
+                ),
+            )
+        )
+        result = await PrivateAPI(client).close_position("BTC-USDT")
+
+    assert result is not None
+    assert result.side == "SELL"
+    sent = dict(place_route.calls.last.request.url.params)
+    assert sent["side"] == "SELL"
+    assert sent["type"] == "MARKET"
+    assert sent["quantity"] == "0.005"
+    assert sent["reduceOnly"] == "true"
+    # close-side не несёт attached SL/TP.
+    assert "stopLoss" not in sent
+    assert "takeProfit" not in sent
