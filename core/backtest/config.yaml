@@ -1,0 +1,10 @@
+# BacktestEngine: параметры симуляции.
+# Реальные значения slippage уточняются из live `ops/metrics.jsonl`.
+
+fees:
+  taker_pct: 0.05   # BingX USDT-M perp taker fee (бизнес/инструменты-bingx.md)
+  maker_pct: 0.02
+
+slippage_bps: 10    # 10 bps (0.1%) — консервативная оценка до накопления live-данных
+
+initial_equity: 1000   # USDT, соответствует целям/риск-профилю
