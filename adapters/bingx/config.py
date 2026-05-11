@@ -72,6 +72,7 @@ class SigningConfig(_StrictModel):
 
 
 class RestEndpoints(_StrictModel):
+    # Public (фаза 0.B)
     server_time: str
     contracts: str
     ticker: str
@@ -79,6 +80,15 @@ class RestEndpoints(_StrictModel):
     premium_index: str
     funding_rate_history: str
     open_interest: str
+    # Private read (фаза 0.C)
+    balance: str
+    positions: str
+    open_orders: str
+    fills: str
+    # Private setters (фаза 0.C, idempotent)
+    set_margin_type: str
+    set_leverage: str
+    set_position_mode: str
 
 
 class KlinesConfig(_StrictModel):

@@ -1,7 +1,8 @@
 """Async HTTP-клиент BingX.
 
-Слой ниже ``public.py``: знает про подпись, rate limit, retry, разбор
-бизнес-ошибок ``code != 0``. Сами эндпоинты и pydantic-парсинг — наверху.
+Слой ниже ``public.py`` / ``private.py``: знает про подпись, rate limit,
+retry, разбор бизнес-ошибок ``code != 0``. Сами эндпоинты и
+pydantic-парсинг — на уровне выше.
 
 Дизайн-решения:
 - ``httpx.AsyncClient`` (поддержка HTTP/1.1, async, моки через respx).
@@ -10,9 +11,14 @@
 - Retry-policy: только идемпотентные методы (GET/PUT/DELETE) + ретраимые
   HTTP-статусы из конфига (429, 5xx). POST не ретраим автоматически —
   идемпотентность управляется через ``client_order_id`` в фазе 0.D.
-- HMAC-подпись: реализована, но в фазе 0.B недостижима — все вызовы идут
-  через ``request_public``. ``request_signed`` гейтится наличием ключей
-  в ``BingXClient``; без них бросает ``AuthError``.
+- HMAC-подпись: алгоритм в ``sign_query`` (ASCII-сортировка, без URL-encoding
+  в подписной строке). Источник: docs-v3 → Quick Start → Signature.
+- Timestamp в подписи берётся из ``ServerTimeSyncer`` (см. ``time_sync.py``),
+  не из локального ``time.time()`` — иначе расхождение часов > recvWindow
+  ловит ``code=109400``.
+- Если signed-запрос упал на ``timestamp out of recvWindow`` — однократно
+  принудительно ресинкаем время и повторяем. Это митигация причины №3
+  из plans/04 §8 (плывущие часы VPS / suspend/resume).
 
 Источник всех квирков и форматов: docs-v3 → Quick Start → Signature Authentication.
 """
@@ -40,6 +46,22 @@ from adapters.bingx.exceptions import (
     RateLimited,
     ServerError,
 )
+from adapters.bingx.settings import BingXSettings
+from adapters.bingx.time_sync import ServerTimeSyncer
+
+# Бизнес-коды BingX, означающие «локальный timestamp не попадает в recvWindow
+# серверного времени». 100400 — generic «parameter error» из которого BingX
+# часто возвращает timestamp-проблемы; 109400 — задокументировано как
+# конкретно timestamp. Дополнительная страховка — substring в message.
+_TIMESTAMP_ERROR_CODES = frozenset({100400, 109400})
+_TIMESTAMP_ERROR_HINTS = ("timestamp", "recvwindow", "recv_window")
+
+
+def _is_timestamp_error(err: APIError) -> bool:
+    if err.code in _TIMESTAMP_ERROR_CODES:
+        return True
+    msg = err.message.lower()
+    return any(hint in msg for hint in _TIMESTAMP_ERROR_HINTS)
 
 
 @dataclass
@@ -94,24 +116,38 @@ class BingXClient:
 
     Использование::
 
-        async with BingXClient() as client:
-            data = await client.request_public("GET", "/openApi/swap/v2/server/time")
+        async with BingXClient(settings=load_settings()) as client:
+            balance = await client.request_signed(
+                "GET", "/openApi/swap/v3/user/balance"
+            )
 
-    Ключи (api_key/api_secret) опциональны — без них доступен только
-    публичный API. В фазе 0.B запускается без ключей.
+    Ключи: приоритет explicit ``api_key``/``api_secret`` >
+    ``settings.active_key``/``settings.active_secret`` > ``None``. Без ключей
+    publicAPI работает, ``request_signed`` бросает ``AuthError``.
     """
 
     def __init__(
         self,
         config: BingXConfig | None = None,
         *,
+        settings: BingXSettings | None = None,
         api_key: str | None = None,
         api_secret: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._config = config or get_default_config()
-        self._api_key = api_key
-        self._api_secret = api_secret
+        # Settings.env (.env / переменные окружения) имеет приоритет над YAML —
+        # это даёт безопасный путь «положил BINGX_ENV=vst → пошёл на VST», без
+        # необходимости редактировать config.yaml. Без settings — берём YAML.
+        if settings is not None and settings.env != self._config.env:
+            self._config = self._config.model_copy(update={"env": settings.env})
+        # explicit > settings > None
+        self._api_key = api_key if api_key is not None else (
+            settings.active_key if settings is not None else None
+        )
+        self._api_secret = api_secret if api_secret is not None else (
+            settings.active_secret if settings is not None else None
+        )
         timeout = httpx.Timeout(
             self._config.http.total_timeout_s,
             connect=self._config.http.connect_timeout_s,
@@ -126,6 +162,11 @@ class BingXClient:
         bucket_cfg = self._config.rate_limits.market_data
         self._market_bucket = _TokenBucket(
             capacity=bucket_cfg.capacity, window_s=bucket_cfg.window_s
+        )
+        self._time_syncer = ServerTimeSyncer(
+            client=self,
+            server_time_path=self._config.rest_endpoints.server_time,
+            interval_s=self._config.signing.server_time_resync_interval_s,
         )
 
     # ── Контекст-менеджер ──────────────────────────────────────────────────
@@ -142,6 +183,19 @@ class BingXClient:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    # ── Свойства для PrivateAPI/тестов ─────────────────────────────────────
+    @property
+    def config(self) -> BingXConfig:
+        return self._config
+
+    @property
+    def time_syncer(self) -> ServerTimeSyncer:
+        return self._time_syncer
+
+    @property
+    def has_credentials(self) -> bool:
+        return bool(self._api_key) and bool(self._api_secret)
 
     # ── Публичный API ──────────────────────────────────────────────────────
     async def request_public(
@@ -165,23 +219,59 @@ class BingXClient:
         *,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
-        """Приватный (подписанный) запрос — заготовка для фазы 0.C.
+        """Приватный (подписанный) запрос.
 
-        В фазе 0.B вызовов нет; реализован, чтобы зафиксировать схему
-        подписи и не разбрасывать её в момент включения приватного API.
+        Алгоритм:
+        1. timestamp = ``time_syncer.now_ms()`` (с lazy-sync при необходимости).
+        2. recvWindow из конфига.
+        3. ASCII-sort + canonical string + HMAC-SHA256(secret).
+        4. Header ``X-BX-APIKEY``.
+        5. Если BingX вернул timestamp-ошибку — форсим resync и повторяем
+           один раз. Дальше — поднимаем APIError.
         """
         if not self._api_key or not self._api_secret:
             raise AuthError(
                 "request_signed requires api_key/api_secret; "
-                "phase 0.B works only with public endpoints"
+                "set BINGX_VST_API_KEY/BINGX_VST_API_SECRET in .env"
             )
-        merged: dict[str, Any] = dict(params or {})
-        merged["timestamp"] = int(time.time() * 1000)
-        merged["recvWindow"] = self._config.signing.recv_window_ms
-        merged["signature"] = sign_query(merged, self._api_secret)
+        try:
+            return await self._do_signed(method, path, params=params)
+        except APIError as err:
+            if not _is_timestamp_error(err):
+                raise
+            # Часы поплыли — форсим resync и повторяем ровно один раз.
+            await self._time_syncer.sync()
+            return await self._do_signed(method, path, params=params)
+
+    async def _do_signed(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None,
+    ) -> Any:
+        # Два подтверждённых квирка live BingX VST (2026-05-11, см. plans/01 §7):
+        # 1. Передача `recvWindow` в params/подписи приводит к
+        #    `code=100001 "Signature verification failed"`, даже когда
+        #    значение совпадает с дефолтом docs (5000ms). Не отправляем
+        #    recvWindow вовсе — BingX применит server-side default.
+        # 2. BingX подписывает query string РОВНО в том порядке, в котором
+        #    она пришла в URL — не пересортирует. Поэтому params должны
+        #    уйти в httpx в alpha-sorted порядке (Python dict сохраняет
+        #    insertion order; httpx сохраняет порядок dict при сборке URL).
+        #    Иначе canonical и URL-query разойдутся → reject.
+        assert self._api_secret is not None  # checked by caller
+        assert self._api_key is not None
+        ts_ms = await self._time_syncer.now_ms()
+        biz: dict[str, Any] = dict(params or {})
+        biz["timestamp"] = ts_ms
+        # Sorted dict: сортируем по ключу, сохраняем порядок для httpx.
+        sorted_biz: dict[str, Any] = dict(sorted(biz.items()))
+        signature = sign_query(sorted_biz, self._api_secret)
+        sorted_biz["signature"] = signature
         await self._market_bucket.acquire()
         headers = {self._config.signing.api_key_header: self._api_key}
-        return await self._send_with_retry(method, path, params=merged, headers=headers)
+        return await self._send_with_retry(method, path, params=sorted_biz, headers=headers)
 
     # ── Внутренности ───────────────────────────────────────────────────────
     async def _send_with_retry(
