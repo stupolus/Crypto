@@ -87,6 +87,7 @@ testpaths = [
     "strategies/btc_breakout/tests",
     "strategies/us_session_breakout/tests",
     "strategies/trend_ema_4h/tests",
+    "runners/tests",
 ]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
