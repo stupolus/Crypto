@@ -20,7 +20,7 @@ class _StrictModel(BaseModel):
 
 class StrategyConfig(_StrictModel):
     symbol: str
-    timeframe: Literal["15m"]
+    timeframe: Literal["15m", "1h", "4h"]
 
     donchian_n: int = Field(gt=0)
 
