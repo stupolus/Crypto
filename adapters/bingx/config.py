@@ -136,6 +136,7 @@ class UserDataStreamConfig(_StrictModel):
     reconnect_max_delay_s: float = Field(gt=0)
     reconnect_factor: float = Field(gt=1)
     watchdog_silence_s: float = Field(gt=0)
+    soft_reconcile_interval_s: float = Field(ge=0)  # 0 = disabled
 
 
 class CancelAllAfterConfig(_StrictModel):

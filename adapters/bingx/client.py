@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import time
 from collections import deque
 from collections.abc import Mapping
@@ -48,6 +49,8 @@ from adapters.bingx.exceptions import (
 )
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.time_sync import ServerTimeSyncer
+
+logger = logging.getLogger(__name__)
 
 # ── Логирование/маскирование секретов (фаза 0.E) ────────────────────────────
 # Никогда не логируем сырые `signature` и `X-BX-APIKEY`.
@@ -336,6 +339,7 @@ class BingXClient:
         last_exc: Exception | None = None
         delay = retry_cfg.backoff_initial_s
         for attempt in range(1, retry_cfg.max_attempts + 1):
+            request_started_ms = int(time.time() * 1000)
             try:
                 response = await self._http.request(
                     method,
@@ -344,12 +348,30 @@ class BingXClient:
                     headers=dict(headers) if headers else None,
                 )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
+                logger.warning(
+                    "bingx %s %s transport error: %s (attempt %d)",
+                    method,
+                    path,
+                    exc,
+                    attempt,
+                )
                 last_exc = NetworkError(f"transport error on {method} {path}: {exc}")
                 if attempt >= retry_cfg.max_attempts:
                     break
                 await asyncio.sleep(delay)
                 delay = min(delay * retry_cfg.backoff_factor, retry_cfg.backoff_max_s)
                 continue
+
+            latency_ms = int(time.time() * 1000) - request_started_ms
+            logger.debug(
+                "bingx %s %s status=%d latency=%dms url=%s headers=%s",
+                method,
+                path,
+                response.status_code,
+                latency_ms,
+                mask_signed_url(str(response.request.url)),
+                mask_headers(dict(response.request.headers)),
+            )
 
             status = response.status_code
             if status == 401 or status == 403:

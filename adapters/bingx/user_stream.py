@@ -78,6 +78,7 @@ class BingXUserDataStream:
         self._queue: asyncio.Queue[UserStreamEvent] = asyncio.Queue()
         self._session_task: asyncio.Task[None] | None = None
         self._keep_alive_task: asyncio.Task[None] | None = None
+        self._soft_reconcile_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._connected_event = asyncio.Event()
 
@@ -95,6 +96,11 @@ class BingXUserDataStream:
         self._keep_alive_task = asyncio.create_task(
             self._keep_alive_loop(), name="bingx-user-stream-keepalive"
         )
+        if self._cfg.user_data_stream.soft_reconcile_interval_s > 0:
+            self._soft_reconcile_task = asyncio.create_task(
+                self._soft_reconcile_loop(),
+                name="bingx-user-stream-soft-reconcile",
+            )
         return self
 
     async def __aexit__(
@@ -104,7 +110,11 @@ class BingXUserDataStream:
         tb: TracebackType | None,
     ) -> None:
         self._stop_event.set()
-        for t in (self._session_task, self._keep_alive_task):
+        for t in (
+            self._session_task,
+            self._keep_alive_task,
+            self._soft_reconcile_task,
+        ):
             if t is not None and not t.done():
                 t.cancel()
                 with suppress(asyncio.CancelledError):
@@ -259,3 +269,29 @@ class BingXUserDataStream:
                 if self._conn is not None:
                     with suppress(Exception):
                         await self._conn.close()
+
+    async def _soft_reconcile_loop(self) -> None:
+        """Периодически эмитим RECONCILE-event с REST-снимком — даже
+        если WS не разрывался. Защита от потери push-событий «в полёте»
+        (BingX баг / network glitch без disconnect).
+
+        Интервал из ``config.yaml`` (``user_data_stream.soft_reconcile_interval_s``).
+        Включается явно (0 = выключено). На live рекомендуется 60-180s.
+        """
+        interval = self._cfg.user_data_stream.soft_reconcile_interval_s
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(), timeout=interval
+                )
+                return  # stop_event set
+            except TimeoutError:
+                pass
+            # Reconcile только если WS активен — иначе session_loop сам эмитит.
+            if not self._connected_event.is_set():
+                continue
+            try:
+                await self._emit_reconcile()
+                logger.debug("soft-reconcile emitted")
+            except Exception as exc:
+                logger.warning("soft-reconcile failed: %s", exc)
