@@ -83,10 +83,13 @@ data/raw/
 *.sqlite3
 *.db
 
-# Бэктест-артефакты
+# Бэктест-артефакты + runtime ops логи
 backtest_results/
 *.html
 notebook_outputs/
+ops/backtest-*.json
+ops/metrics.jsonl
+ops/metrics-*.jsonl
 
 # Jupyter
 .ipynb_checkpoints/
