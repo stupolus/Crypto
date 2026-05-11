@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _ms_to_utc(value: int) -> datetime:
@@ -185,3 +185,128 @@ class Fill(_StrictModel):
     @property
     def time_utc(self) -> datetime:
         return _ms_to_utc(self.time_ms)
+
+
+# ─── Подтверждение ордера (POST/DELETE /trade/order) ────────────────────────
+
+
+class OrderAck(_StrictModel):
+    """Уплощённый ответ ``POST/DELETE /openApi/swap/v2/trade/order``.
+
+    Квирк live VST 2026-05-11: BingX отдаёт здесь короткий ack, отличный от
+    `Order`. Гарантированы только ``orderId``, ``symbol``, ``status``,
+    ``side``, ``positionSide``, ``type``. Остальное опционально и зависит от
+    типа ордера / стадии исполнения. ``orderId`` приходит как ``int``
+    (BingX snowflake-id), мы кастуем в ``str`` для единообразия с `Order`.
+    """
+
+    order_id: str = Field(alias="orderId")
+    client_order_id: str | None = Field(default=None, alias="clientOrderID")
+    symbol: str
+    side: OrderSide
+    position_side: PositionSide = Field(alias="positionSide")
+    type: OrderType
+    status: OrderStatus
+    price: Decimal | None = None
+    stop_price: Decimal | None = Field(default=None, alias="stopPrice")
+    original_quantity: Decimal | None = Field(default=None, alias="origQty")
+    executed_quantity: Decimal | None = Field(default=None, alias="executedQty")
+    average_price: Decimal | None = Field(default=None, alias="avgPrice")
+    reduce_only: bool | None = Field(default=None, alias="reduceOnly")
+    time_ms: int | None = Field(default=None, alias="time")
+    update_time_ms: int | None = Field(default=None, alias="updateTime")
+
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _coerce_order_id_to_str(cls, v: object) -> str:
+        # BingX отдаёт `orderId` как int (snowflake); кастуем в str для
+        # единого контракта с `Order`.
+        return str(v)
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+
+# ─── Запрос на размещение ордера (наша доменная модель) ──────────────────────
+
+
+TimeInForce = Literal["GTC", "IOC", "FOK"]
+EntryOrderType = Literal["MARKET", "LIMIT"]
+
+
+class OrderRequest(_StrictModel):
+    """Запрос на размещение ордера: наша модель, не от BingX.
+
+    Инвариант проекта (см. plans/01 §3 «Защитные инварианты»): нельзя
+    открывать позицию без attached stop_loss. Адаптер запрещает это на
+    уровне валидатора, до отправки запроса.
+
+    Для close-side (``reduce_only=True``) attached SL/TP запрещены: позиция
+    уже существует, защитные ордера ставятся на entry или отдельным вызовом
+    в фазе 0.D part 2.
+    """
+
+    symbol: str
+    side: OrderSide
+    position_side: PositionSide = "BOTH"
+    order_type: EntryOrderType
+    quantity: Decimal
+    price: Decimal | None = None
+    reduce_only: bool = False
+    time_in_force: TimeInForce = "GTC"
+    attached_stop_loss: Decimal | None = None
+    attached_take_profit: Decimal | None = None
+    client_order_id: str | None = None
+    working_type: Literal["MARK_PRICE", "CONTRACT_PRICE", "INDEX_PRICE"] = "MARK_PRICE"
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen_req(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+    @field_validator("quantity")
+    @classmethod
+    def _check_positive_quantity(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError(f"quantity must be > 0, got {v}")
+        return v
+
+    @field_validator("client_order_id")
+    @classmethod
+    def _check_client_order_id_length(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not (1 <= len(v) <= 40):
+            raise ValueError(
+                f"client_order_id length must be 1..40 chars, got {len(v)}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _check_invariants(self) -> OrderRequest:
+        if self.order_type == "LIMIT" and self.price is None:
+            raise ValueError("LIMIT order requires price")
+        if self.order_type == "MARKET" and self.price is not None:
+            raise ValueError("MARKET order must not have price")
+        if self.reduce_only:
+            if self.attached_stop_loss is not None:
+                raise ValueError("reduce_only order must not carry attached stop_loss")
+            if self.attached_take_profit is not None:
+                raise ValueError("reduce_only order must not carry attached take_profit")
+        else:
+            if self.attached_stop_loss is None:
+                raise ValueError(
+                    "entry order must have attached_stop_loss "
+                    "(see бизнес/риск-профиль.md: «нет стопа на бирже — нет позиции»)"
+                )
+        for fname in ("price", "attached_stop_loss", "attached_take_profit"):
+            val = getattr(self, fname)
+            if val is not None and val <= 0:
+                raise ValueError(f"{fname} must be > 0, got {val}")
+        return self

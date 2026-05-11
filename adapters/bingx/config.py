@@ -89,6 +89,10 @@ class RestEndpoints(_StrictModel):
     set_margin_type: str
     set_leverage: str
     set_position_mode: str
+    # Trade (фаза 0.D part 1)
+    place_order: str
+    cancel_order: str
+    cancel_all_orders: str
 
 
 class KlinesConfig(_StrictModel):
