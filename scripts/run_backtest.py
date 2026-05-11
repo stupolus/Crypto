@@ -15,12 +15,22 @@ import time
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from adapters.bingx.models import Kline
-from core.backtest import BacktestEngine, BacktestResult, load_config
+from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
+from strategies.us_session_breakout import (
+    UsSessionBreakoutStrategy,
+)
+from strategies.us_session_breakout import (
+    get_default_config as us_get_default_config,
+)
+from strategies.us_session_breakout.config import (
+    load_config as us_load_config,
+)
 
 
 def _decimal_to_json(obj: object) -> object:
@@ -79,6 +89,12 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--strategy",
+        choices=["btc_breakout", "us_session_breakout"],
+        default="btc_breakout",
+        help="Какую стратегию прогонять",
+    )
+    parser.add_argument(
         "--strategy-config",
         type=Path,
         default=None,
@@ -118,16 +134,37 @@ def main() -> None:
         span_days = (last - first) / 86_400_000
         print(f"  Range: {first} → {last} ({span_days:.1f} days)")
 
-    strategy_cfg = (
-        load_strategy_config(args.strategy_config)
-        if args.strategy_config is not None
-        else get_default_config()
-    )
+    # Загружаем нужный config + factory стратегии.
+    strategy_cfg: Any
+    strategy_factory: Any
+    if args.strategy == "us_session_breakout":
+        strategy_cfg = (
+            us_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else us_get_default_config()
+        )
+
+        def _us_factory(cfg: Any) -> Strategy:
+            return UsSessionBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _us_factory
+    else:  # btc_breakout
+        strategy_cfg = (
+            load_strategy_config(args.strategy_config)
+            if args.strategy_config is not None
+            else get_default_config()
+        )
+
+        def _btc_factory(cfg: Any) -> Strategy:
+            return BtcBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _btc_factory
     if args.symbol is not None:
         strategy_cfg = strategy_cfg.model_copy(update={"symbol": args.symbol})
         print(f"  Symbol override: {strategy_cfg.symbol}")
     if args.strategy_config is not None:
         print(f"  Strategy config: {args.strategy_config}")
+    print(f"  Strategy: {args.strategy}")
 
     backtest_cfg = load_config()
     print(
@@ -137,22 +174,20 @@ def main() -> None:
     )
 
     if args.split_fraction is None:
-        _run_single(strategy_cfg, backtest_cfg, candles, args)
+        _run_single(strategy_factory, strategy_cfg, backtest_cfg, candles, args)
     else:
-        _run_split(strategy_cfg, backtest_cfg, candles, args)
+        _run_split(strategy_factory, strategy_cfg, backtest_cfg, candles, args)
 
 
-def _run_single(strategy_cfg, backtest_cfg, candles, args) -> None:  # type: ignore[no-untyped-def]
-    strategy = BtcBreakoutStrategy(
-        config=strategy_cfg, risk_engine=RiskEngine()
-    )
+def _run_single(strategy_factory, strategy_cfg, backtest_cfg, candles, args) -> None:  # type: ignore[no-untyped-def]
+    strategy = strategy_factory(strategy_cfg)
     engine = BacktestEngine(backtest_cfg)
     result = engine.run(strategy, candles)
     print_summary(result)
     _save_result(result, backtest_cfg, args.candles, len(candles), args.output_dir, "single")
 
 
-def _run_split(strategy_cfg, backtest_cfg, candles, args) -> None:  # type: ignore[no-untyped-def]
+def _run_split(strategy_factory, strategy_cfg, backtest_cfg, candles, args) -> None:  # type: ignore[no-untyped-def]
     fraction = args.split_fraction
     if not 0.1 <= fraction <= 0.9:
         raise SystemExit(f"--split-fraction must be in [0.1, 0.9], got {fraction}")
@@ -161,19 +196,13 @@ def _run_split(strategy_cfg, backtest_cfg, candles, args) -> None:  # type: igno
     oos_candles = candles[split_idx:]
     print(f"\nIN-SAMPLE: {len(is_candles)} candles")
     is_engine = BacktestEngine(backtest_cfg)
-    is_strategy = BtcBreakoutStrategy(
-        config=strategy_cfg, risk_engine=RiskEngine()
-    )
-    is_result = is_engine.run(is_strategy, is_candles)
+    is_result = is_engine.run(strategy_factory(strategy_cfg), is_candles)
     print_summary(is_result)
     _save_result(is_result, backtest_cfg, args.candles, len(is_candles), args.output_dir, "is")
 
     print(f"\nOUT-OF-SAMPLE: {len(oos_candles)} candles")
     oos_engine = BacktestEngine(backtest_cfg)
-    oos_strategy = BtcBreakoutStrategy(
-        config=strategy_cfg, risk_engine=RiskEngine()
-    )
-    oos_result = oos_engine.run(oos_strategy, oos_candles)
+    oos_result = oos_engine.run(strategy_factory(strategy_cfg), oos_candles)
     print_summary(oos_result)
     _save_result(oos_result, backtest_cfg, args.candles, len(oos_candles), args.output_dir, "oos")
 
