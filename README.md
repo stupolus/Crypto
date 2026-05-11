@@ -1,5 +1,7 @@
 # Crypto — алгоритмическая торговая платформа
 
+[![CI](https://github.com/stupolus/Crypto/actions/workflows/ci.yml/badge.svg)](https://github.com/stupolus/Crypto/actions/workflows/ci.yml)
+
 **Стартовые точки:**
 - Для агентов / Claude: [`CLAUDE.md`](./CLAUDE.md), [`AGENTS.md`](./AGENTS.md)
 - Архитектура и принципы: [`docs/architecture.md`](./docs/architecture.md)
