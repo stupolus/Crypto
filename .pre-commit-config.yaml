@@ -1,0 +1,47 @@
+# Pre-commit hooks: запускаются локально перед каждым `git commit`.
+# Установка:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Это страховка ДО push'а, чтобы не отправлять красный CI.
+# CI (.github/workflows/ci.yml) — финальная защита.
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        language: system
+        entry: ruff check
+        args: [adapters, core, strategies, scripts, runners]
+        pass_filenames: false
+        types: [python]
+
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: ruff format
+        args: [--check, adapters, core, strategies, scripts, runners]
+        pass_filenames: false
+        types: [python]
+
+      - id: mypy
+        name: mypy strict
+        language: system
+        entry: mypy
+        args: [adapters, core, strategies, scripts, runners]
+        pass_filenames: false
+        types: [python]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^.*\.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key  # ловит API-ключи, RSA-приватки
+      - id: check-added-large-files
+        args: [--maxkb=500]
