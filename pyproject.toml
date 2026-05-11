@@ -29,7 +29,7 @@ requires = ["setuptools>=70"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["adapters*", "core*"]
+include = ["adapters*", "core*", "strategies*"]
 exclude = ["venv*", "tests*"]
 
 # ─── Ruff ────────────────────────────────────────────────────────────────────
@@ -79,7 +79,13 @@ ignore_missing_imports = true
 # ─── pytest ──────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["adapters/bingx/tests", "core/risk/tests", "core/backtest/tests"]
+testpaths = [
+    "adapters/bingx/tests",
+    "core/risk/tests",
+    "core/backtest/tests",
+    "core/signals/tests",
+    "strategies/btc_breakout/tests",
+]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
 ]
@@ -91,11 +97,19 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["adapters/bingx", "core/risk", "core/backtest"]
+source = [
+    "adapters/bingx",
+    "core/risk",
+    "core/backtest",
+    "core/signals",
+    "strategies/btc_breakout",
+]
 omit = [
     "adapters/bingx/tests/*",
     "core/risk/tests/*",
     "core/backtest/tests/*",
+    "core/signals/tests/*",
+    "strategies/btc_breakout/tests/*",
 ]
 
 [tool.coverage.report]
