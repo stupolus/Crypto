@@ -86,6 +86,7 @@ testpaths = [
     "core/signals/tests",
     "strategies/btc_breakout/tests",
     "strategies/us_session_breakout/tests",
+    "strategies/trend_ema_4h/tests",
 ]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
@@ -105,6 +106,7 @@ source = [
     "core/signals",
     "strategies/btc_breakout",
     "strategies/us_session_breakout",
+    "strategies/trend_ema_4h",
 ]
 omit = [
     "adapters/bingx/tests/*",
@@ -113,6 +115,7 @@ omit = [
     "core/signals/tests/*",
     "strategies/btc_breakout/tests/*",
     "strategies/us_session_breakout/tests/*",
+    "strategies/trend_ema_4h/tests/*",
 ]
 
 [tool.coverage.report]
