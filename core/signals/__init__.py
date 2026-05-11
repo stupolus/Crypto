@@ -16,6 +16,11 @@ from core.signals.indicators import (
     sma,
     true_range,
 )
+from core.signals.session import (
+    is_in_window,
+    utc_day_of_epoch,
+    utc_hour_of_day,
+)
 
 __all__ = [
     "Blacklist",
@@ -27,7 +32,10 @@ __all__ = [
     "atr",
     "donchian_channel",
     "ema",
+    "is_in_window",
     "percentile_rank",
     "sma",
     "true_range",
+    "utc_day_of_epoch",
+    "utc_hour_of_day",
 ]
