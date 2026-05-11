@@ -21,9 +21,7 @@ from adapters.bingx.config import BingXConfig
 from adapters.bingx.exceptions import InvalidResponseError
 
 
-def _stub_server_time(
-    mock: respx.MockRouter, cfg: BingXConfig, server_ms: int
-) -> respx.Route:
+def _stub_server_time(mock: respx.MockRouter, cfg: BingXConfig, server_ms: int) -> respx.Route:
     return mock.get(cfg.rest_endpoints.server_time).mock(
         return_value=httpx.Response(
             200, json={"code": 0, "msg": "", "data": {"serverTime": server_ms}}

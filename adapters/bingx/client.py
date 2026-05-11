@@ -83,10 +83,8 @@ def mask_signed_url(url: str) -> str:
 
 def mask_headers(headers: Mapping[str, str]) -> dict[str, str]:
     """Вернуть копию headers с замаскированными значениями ключей API."""
-    return {
-        k: (_MASK if k.lower() in _SENSITIVE_HEADERS_CI else v)
-        for k, v in headers.items()
-    }
+    return {k: (_MASK if k.lower() in _SENSITIVE_HEADERS_CI else v) for k, v in headers.items()}
+
 
 # Бизнес-коды BingX, означающие «локальный timestamp не попадает в recvWindow
 # серверного времени». 100400 — generic «parameter error» из которого BingX
@@ -181,11 +179,15 @@ class BingXClient:
         if settings is not None and settings.env != self._config.env:
             self._config = self._config.model_copy(update={"env": settings.env})
         # explicit > settings > None
-        self._api_key = api_key if api_key is not None else (
-            settings.active_key if settings is not None else None
+        self._api_key = (
+            api_key
+            if api_key is not None
+            else (settings.active_key if settings is not None else None)
         )
-        self._api_secret = api_secret if api_secret is not None else (
-            settings.active_secret if settings is not None else None
+        self._api_secret = (
+            api_secret
+            if api_secret is not None
+            else (settings.active_secret if settings is not None else None)
         )
         timeout = httpx.Timeout(
             self._config.http.total_timeout_s,
@@ -280,17 +282,13 @@ class BingXClient:
                 "set BINGX_VST_API_KEY/BINGX_VST_API_SECRET in .env"
             )
         try:
-            return await self._do_signed(
-                method, path, params=params, raw_response=raw_response
-            )
+            return await self._do_signed(method, path, params=params, raw_response=raw_response)
         except APIError as err:
             if not _is_timestamp_error(err):
                 raise
             # Часы поплыли — форсим resync и повторяем ровно один раз.
             await self._time_syncer.sync()
-            return await self._do_signed(
-                method, path, params=params, raw_response=raw_response
-            )
+            return await self._do_signed(method, path, params=params, raw_response=raw_response)
 
     async def _do_signed(
         self,

@@ -222,17 +222,13 @@ class BingXUserDataStream:
                 await self._queue.put(event)
 
     @staticmethod
-    async def _iter_frames(
-        conn: ClientConnection, silence_s: float
-    ) -> AsyncIterator[str]:
+    async def _iter_frames(conn: ClientConnection, silence_s: float) -> AsyncIterator[str]:
         """Декомпрессит gzip-фреймы, выдаёт текст. Watchdog по тишине."""
         while True:
             try:
                 raw = await asyncio.wait_for(conn.recv(), timeout=silence_s)
             except TimeoutError as exc:
-                raise WebSocketError(
-                    f"user-stream watchdog timeout after {silence_s}s"
-                ) from exc
+                raise WebSocketError(f"user-stream watchdog timeout after {silence_s}s") from exc
             if isinstance(raw, bytes):
                 try:
                     decoded = gzip.decompress(raw).decode("utf-8")
@@ -281,9 +277,7 @@ class BingXUserDataStream:
         interval = self._cfg.user_data_stream.soft_reconcile_interval_s
         while not self._stop_event.is_set():
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=interval
-                )
+                await asyncio.wait_for(self._stop_event.wait(), timeout=interval)
                 return  # stop_event set
             except TimeoutError:
                 pass

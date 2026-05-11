@@ -40,9 +40,7 @@ def _make_config(**overrides: object) -> StrategyConfig:
     return StrategyConfig.model_validate(base)
 
 
-def _kline(
-    t: int, open_: str, high: str, low: str, close: str, volume: str = "100"
-) -> Kline:
+def _kline(t: int, open_: str, high: str, low: str, close: str, volume: str = "100") -> Kline:
     return Kline.model_validate(
         {
             "time": t,
@@ -81,9 +79,7 @@ def test_no_signal_during_warmup() -> None:
 def test_no_signal_when_no_breakout() -> None:
     """Цены в узком коридоре — Donchian не пробивается."""
     strategy = _make_strategy()
-    history = tuple(
-        _kline(i, "100", "101", "99", "100", volume="100") for i in range(30)
-    )
+    history = tuple(_kline(i, "100", "101", "99", "100", volume="100") for i in range(30))
     ctx = StrategyContext(
         current_candle=history[-1],
         history=history,
@@ -204,9 +200,7 @@ def test_signal_blocked_by_news_pause() -> None:
     strategy = BtcBreakoutStrategy(
         config=_make_config(),
         risk_engine=RiskEngine(),
-        news_calendar=StaticNewsCalendar(
-            pause_windows=[(29 * 60_000, 31 * 60_000)]
-        ),
+        news_calendar=StaticNewsCalendar(pause_windows=[(29 * 60_000, 31 * 60_000)]),
     )
     ctx = StrategyContext(
         current_candle=history[-1],

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff (linter)
+        run: ruff check adapters core strategies scripts runners
+
+      - name: Ruff (format check)
+        run: ruff format --check adapters core strategies scripts runners
+
+      - name: Mypy (strict type checks)
+        run: mypy adapters core strategies scripts runners
+
+      - name: Pytest (unit only, без integration)
+        run: pytest -q
+        env:
+          # BingX integration-тесты требуют ключи; в CI пропускаем.
+          BINGX_VST_API_KEY: ""
+          BINGX_VST_API_SECRET: ""

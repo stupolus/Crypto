@@ -74,8 +74,8 @@ class RiskInputs(_Frozen):
 class RiskApproval(_Frozen):
     """Положительное решение: что отправлять на биржу."""
 
-    quantity: Decimal           # в базовой валюте (например, BTC)
-    notional: Decimal           # в USDT
+    quantity: Decimal  # в базовой валюте (например, BTC)
+    notional: Decimal  # в USDT
     effective_leverage: Decimal
     stop_distance_pct: Decimal  # |entry - stop| / entry × 100
     tier: RiskTier

@@ -44,9 +44,7 @@ def load_config(path: Path | None = None) -> BacktestConfig:
     except yaml.YAMLError as e:
         raise BacktestConfigError(f"backtest YAML parse error: {e}") from e
     if not isinstance(raw, dict):
-        raise BacktestConfigError(
-            f"backtest config root must be mapping, got {type(raw).__name__}"
-        )
+        raise BacktestConfigError(f"backtest config root must be mapping, got {type(raw).__name__}")
     try:
         return BacktestConfig.model_validate(raw)
     except ValidationError as e:

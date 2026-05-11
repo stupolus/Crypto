@@ -31,9 +31,7 @@ def _settings_or_skip() -> BingXSettings:
     """Загрузить BingXSettings, либо пропустить тест."""
     settings = BingXSettings()
     if not (settings.env == "vst" and settings.has_credentials()):
-        pytest.skip(
-            "BINGX_VST_API_KEY / BINGX_VST_API_SECRET не заданы — пропускаем"
-        )
+        pytest.skip("BINGX_VST_API_KEY / BINGX_VST_API_SECRET не заданы — пропускаем")
     return settings
 
 
@@ -49,9 +47,7 @@ def settings() -> BingXSettings:
 
 
 @pytest.fixture
-async def client(
-    vst_cfg: BingXConfig, settings: BingXSettings
-) -> AsyncIterator[BingXClient]:
+async def client(vst_cfg: BingXConfig, settings: BingXSettings) -> AsyncIterator[BingXClient]:
     async with BingXClient(vst_cfg, settings=settings) as c:
         yield c
 

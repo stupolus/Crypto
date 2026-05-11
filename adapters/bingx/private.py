@@ -103,9 +103,7 @@ def _extract_order_payload(data: Any) -> Any:
     # Иногда BingX возвращает order напрямую под data — fallback.
     if isinstance(data, dict) and "orderId" in data:
         return data
-    raise InvalidResponseError(
-        f"unexpected /trade/order payload shape: {type(data).__name__}"
-    )
+    raise InvalidResponseError(f"unexpected /trade/order payload shape: {type(data).__name__}")
 
 
 # BingX-коды и подстроки сообщений, означающие «нечего отменять» — мы
@@ -122,9 +120,7 @@ def _extract_listen_key(data: Any) -> str:
         if not key:
             raise InvalidResponseError("listenKey is empty")
         return str(key)
-    raise InvalidResponseError(
-        f"unexpected userDataStream payload: {type(data).__name__}"
-    )
+    raise InvalidResponseError(f"unexpected userDataStream payload: {type(data).__name__}")
 
 
 def _is_nothing_to_cancel(err: APIError) -> bool:
@@ -208,9 +204,7 @@ class PrivateAPI:
             params["startTs"] = start_ms
         if end_ms is not None:
             params["endTs"] = end_ms
-        data = await self._client.request_signed(
-            "GET", self._endpoints.fills, params=params
-        )
+        data = await self._client.request_signed("GET", self._endpoints.fills, params=params)
         items = self._unwrap_fills(data)
         return [Fill.model_validate(item) for item in items]
 
@@ -246,14 +240,11 @@ class PrivateAPI:
         _validate_symbol(symbol)
         if not (self._LEVERAGE_MIN <= leverage <= self._LEVERAGE_MAX):
             raise ValueError(
-                f"leverage must be in {self._LEVERAGE_MIN}..{self._LEVERAGE_MAX}, "
-                f"got {leverage}"
+                f"leverage must be in {self._LEVERAGE_MIN}..{self._LEVERAGE_MAX}, got {leverage}"
             )
         params = {"symbol": symbol, "leverage": leverage, "side": side}
         try:
-            await self._client.request_signed(
-                "POST", self._endpoints.set_leverage, params=params
-            )
+            await self._client.request_signed("POST", self._endpoints.set_leverage, params=params)
         except APIError as err:
             if not _is_idempotent_ok(err):
                 raise
@@ -363,9 +354,7 @@ class PrivateAPI:
         ):
             await self.close_position(req.symbol)
             if self._journal is not None:
-                await self._journal.record_failure(
-                    coid, "compensating_close: SL missing in ack"
-                )
+                await self._journal.record_failure(coid, "compensating_close: SL missing in ack")
             raise OrderRejected(
                 f"entry order {ack.order_id} placed without confirmed SL in ack "
                 "(stopLoss field empty) — position closed"
@@ -383,11 +372,7 @@ class PrivateAPI:
         request_mark_price: Decimal | None,
     ) -> None:
         assert self._metrics is not None
-        avg = (
-            ack.average_price
-            if ack.average_price and ack.average_price > 0
-            else None
-        )
+        avg = ack.average_price if ack.average_price and ack.average_price > 0 else None
         slippage = compute_slippage_bps(req.side, request_mark_price, avg)
         metric = OrderMetric(
             client_order_id=coid,
@@ -465,15 +450,11 @@ class PrivateAPI:
         positions = await self.get_positions(symbol)
         # На one-way у нас один Position с position_amt; на dual-side — два.
         # Берём первый ненулевой.
-        target = next(
-            (p for p in positions if p.position_amount != 0), None
-        )
+        target = next((p for p in positions if p.position_amount != 0), None)
         if target is None:
             return None
         # Знак position_amount: положительный → LONG, отрицательный → SHORT.
-        close_side: OrderSide = (
-            "SELL" if target.position_amount > 0 else "BUY"
-        )
+        close_side: OrderSide = "SELL" if target.position_amount > 0 else "BUY"
         qty = abs(target.position_amount)
         # Инвариант проекта: one-way режим → positionSide всегда BOTH.
         # На VST 2026-05-11: передача LONG/SHORT в one-way даёт
@@ -604,9 +585,7 @@ class PrivateAPI:
             return orders
         if isinstance(data, list):
             return data
-        raise InvalidResponseError(
-            f"unexpected openOrders payload shape: {type(data).__name__}"
-        )
+        raise InvalidResponseError(f"unexpected openOrders payload shape: {type(data).__name__}")
 
     @staticmethod
     def _unwrap_fills(data: Any) -> list[Any]:
@@ -619,16 +598,10 @@ class PrivateAPI:
                 if isinstance(value, list):
                     return list(value)
             # Без знакомого ключа — пытаемся забрать единственный массив.
-            list_values: list[list[Any]] = [
-                v for v in data.values() if isinstance(v, list)
-            ]
+            list_values: list[list[Any]] = [v for v in data.values() if isinstance(v, list)]
             if len(list_values) == 1:
                 return list(list_values[0])
-            raise InvalidResponseError(
-                f"unexpected fills payload keys: {sorted(data.keys())}"
-            )
+            raise InvalidResponseError(f"unexpected fills payload keys: {sorted(data.keys())}")
         if isinstance(data, list):
             return data
-        raise InvalidResponseError(
-            f"unexpected fills payload shape: {type(data).__name__}"
-        )
+        raise InvalidResponseError(f"unexpected fills payload shape: {type(data).__name__}")

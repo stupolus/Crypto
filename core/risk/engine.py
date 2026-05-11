@@ -113,8 +113,7 @@ class RiskEngine:
             return RiskRejection(
                 code=RejectionCode.DAILY_LOSS_LIMIT,
                 reason=(
-                    f"day_pnl {inputs.day_pnl} <= {daily_threshold} "
-                    f"({cfg.daily_loss_pct}% эквити)"
+                    f"day_pnl {inputs.day_pnl} <= {daily_threshold} ({cfg.daily_loss_pct}% эквити)"
                 ),
                 details={
                     "day_pnl": format(inputs.day_pnl, "f"),
@@ -126,8 +125,7 @@ class RiskEngine:
             return RiskRejection(
                 code=RejectionCode.DAILY_TRADES_LIMIT,
                 reason=(
-                    f"day_trades_count {inputs.day_trades_count} >= "
-                    f"max {cfg.max_daily_trades}"
+                    f"day_trades_count {inputs.day_trades_count} >= max {cfg.max_daily_trades}"
                 ),
                 details={"day_trades_count": str(inputs.day_trades_count)},
             )
@@ -143,9 +141,7 @@ class RiskEngine:
             )
         # weekly
         if inputs.week_pnl is not None:
-            weekly_threshold = (
-                inputs.equity * Decimal(str(cfg.weekly_loss_pct)) / _HUNDRED
-            )
+            weekly_threshold = inputs.equity * Decimal(str(cfg.weekly_loss_pct)) / _HUNDRED
             if inputs.week_pnl <= weekly_threshold:
                 return RiskRejection(
                     code=RejectionCode.WEEKLY_LOSS_LIMIT,
@@ -160,9 +156,7 @@ class RiskEngine:
                 )
         # monthly
         if inputs.month_pnl is not None:
-            monthly_threshold = (
-                inputs.equity * Decimal(str(cfg.monthly_loss_pct)) / _HUNDRED
-            )
+            monthly_threshold = inputs.equity * Decimal(str(cfg.monthly_loss_pct)) / _HUNDRED
             if inputs.month_pnl <= monthly_threshold:
                 return RiskRejection(
                     code=RejectionCode.MONTHLY_LOSS_LIMIT,

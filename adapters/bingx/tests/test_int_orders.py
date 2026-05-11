@@ -46,7 +46,8 @@ async def api(settings: BingXSettings) -> AsyncIterator[PrivateAPI]:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_int_open_market_with_sl_then_close_btc_usdt(
-    api: PrivateAPI, settings: BingXSettings,
+    api: PrivateAPI,
+    settings: BingXSettings,
 ) -> None:
     """Полный жизненный цикл позиции на BTC-USDT:
 
@@ -84,9 +85,7 @@ async def test_int_open_market_with_sl_then_close_btc_usdt(
 
         # Проверяем позицию.
         positions = await api.get_positions(symbol)
-        opened = next(
-            (p for p in positions if p.position_amount != 0), None
-        )
+        opened = next((p for p in positions if p.position_amount != 0), None)
         assert opened is not None, "позиция должна была открыться"
         assert opened.position_amount > 0, "ожидаем LONG (BUY)"
 

@@ -247,9 +247,7 @@ class OrderJournal:
 
     # ── Async API ─────────────────────────────────────────────────────────
 
-    async def record_pending(
-        self, req: OrderRequest, client_order_id: str
-    ) -> None:
+    async def record_pending(self, req: OrderRequest, client_order_id: str) -> None:
         await asyncio.to_thread(self._insert_pending, req, client_order_id)
 
     async def record_ack(self, client_order_id: str, ack: OrderAck) -> None:
@@ -264,7 +262,5 @@ class OrderJournal:
     async def get(self, client_order_id: str) -> JournalEntry | None:
         return await asyncio.to_thread(self._fetch_one, client_order_id)
 
-    async def list_pending(
-        self, symbol: str | None = None
-    ) -> list[JournalEntry]:
+    async def list_pending(self, symbol: str | None = None) -> list[JournalEntry]:
         return await asyncio.to_thread(self._fetch_pending, symbol)

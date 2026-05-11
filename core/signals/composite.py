@@ -19,9 +19,7 @@ from typing import Protocol, runtime_checkable
 class FundingProvider(Protocol):
     """Источник текущего funding rate per symbol."""
 
-    def get_funding_rate(
-        self, symbol: str, timestamp_ms: int
-    ) -> Decimal | None: ...
+    def get_funding_rate(self, symbol: str, timestamp_ms: int) -> Decimal | None: ...
 
 
 @runtime_checkable
@@ -51,9 +49,7 @@ class StaticFundingProvider:
     def __init__(self, rates: Mapping[str, Decimal | None] | None = None) -> None:
         self._rates = dict(rates) if rates else {}
 
-    def get_funding_rate(
-        self, symbol: str, timestamp_ms: int
-    ) -> Decimal | None:
+    def get_funding_rate(self, symbol: str, timestamp_ms: int) -> Decimal | None:
         return self._rates.get(symbol)
 
 
@@ -68,9 +64,7 @@ class StaticNewsCalendar:
         self._windows = tuple(pause_windows or ())
 
     def is_paused(self, timestamp_ms: int) -> bool:
-        return any(
-            start <= timestamp_ms <= end for start, end in self._windows
-        )
+        return any(start <= timestamp_ms <= end for start, end in self._windows)
 
 
 class SetBlacklist:

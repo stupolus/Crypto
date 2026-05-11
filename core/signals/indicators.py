@@ -45,9 +45,7 @@ def ema(values: Sequence[Decimal], period: int) -> Decimal:
     return current
 
 
-def donchian_channel(
-    candles: Sequence[Kline], period: int
-) -> tuple[Decimal, Decimal]:
+def donchian_channel(candles: Sequence[Kline], period: int) -> tuple[Decimal, Decimal]:
     """``(upper, lower)`` за последние ``period`` свечей.
 
     Стратегия обычно сравнивает текущий close с этим каналом, передавая
@@ -87,9 +85,7 @@ def atr(candles: Sequence[Kline], period: int) -> Decimal:
     if period <= 0:
         raise ValueError(f"period must be > 0, got {period}")
     if len(candles) < period + 1:
-        raise ValueError(
-            f"atr: need at least {period + 1} candles, got {len(candles)}"
-        )
+        raise ValueError(f"atr: need at least {period + 1} candles, got {len(candles)}")
 
     # Считаем TR для каждой свечи начиная с 1-й (нужен prev_close).
     trs: list[Decimal] = []

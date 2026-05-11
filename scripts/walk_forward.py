@@ -75,9 +75,7 @@ def _load_candles(path: Path) -> list[Kline]:
     return candles
 
 
-def _slice_by_time(
-    candles: Sequence[Kline], start_ms: int, end_ms: int
-) -> list[Kline]:
+def _slice_by_time(candles: Sequence[Kline], start_ms: int, end_ms: int) -> list[Kline]:
     return [c for c in candles if start_ms <= c.open_time_ms < end_ms]
 
 
@@ -85,13 +83,9 @@ def _build_strategy(name: str, risk: RiskEngine) -> Any:
     if name == "btc_breakout":
         return BtcBreakoutStrategy(config=btc_get_default_config(), risk_engine=risk)
     if name == "us_session_breakout":
-        return UsSessionBreakoutStrategy(
-            config=us_get_default_config(), risk_engine=risk
-        )
+        return UsSessionBreakoutStrategy(config=us_get_default_config(), risk_engine=risk)
     if name == "trend_ema_4h":
-        return TrendEmaStrategy(
-            config=trend_get_default_config(), risk_engine=risk
-        )
+        return TrendEmaStrategy(config=trend_get_default_config(), risk_engine=risk)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -219,9 +213,7 @@ def main() -> None:
     )
     parser.add_argument("--is-days", type=int, default=60, help="IS window length")
     parser.add_argument("--oos-days", type=int, default=30, help="OOS window length")
-    parser.add_argument(
-        "--step-days", type=int, default=30, help="Шаг между IS-окнами"
-    )
+    parser.add_argument("--step-days", type=int, default=30, help="Шаг между IS-окнами")
     parser.add_argument(
         "--output",
         type=Path,
@@ -248,9 +240,7 @@ def main() -> None:
     )
 
     print(f"\nWalk-forward windows: {len(results)}")
-    print(
-        f"  IS = {args.is_days}d, OOS = {args.oos_days}d, step = {args.step_days}d\n"
-    )
+    print(f"  IS = {args.is_days}d, OOS = {args.oos_days}d, step = {args.step_days}d\n")
     print_table(results)
 
     agg = _aggregate(results)

@@ -131,8 +131,7 @@ def main() -> None:
 
     if not args.candles.exists():
         raise SystemExit(
-            f"candles not found: {args.candles}\n"
-            "Run `python -m scripts.download_klines` first."
+            f"candles not found: {args.candles}\nRun `python -m scripts.download_klines` first."
         )
 
     candles = load_candles(args.candles)

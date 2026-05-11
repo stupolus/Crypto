@@ -59,9 +59,7 @@ def load_config(path: Path | None = None) -> RiskConfig:
     except yaml.YAMLError as e:
         raise RiskConfigError(f"risk config YAML parse error: {e}") from e
     if not isinstance(raw, dict):
-        raise RiskConfigError(
-            f"risk config root must be mapping, got {type(raw).__name__}"
-        )
+        raise RiskConfigError(f"risk config root must be mapping, got {type(raw).__name__}")
     try:
         return RiskConfig.model_validate(raw)
     except ValidationError as e:

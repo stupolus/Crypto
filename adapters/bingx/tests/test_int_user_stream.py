@@ -77,7 +77,8 @@ async def test_int_cancel_all_after_round_trip(api: PrivateAPI) -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_int_user_stream_receives_order_trade_update_on_close(
-    api: PrivateAPI, settings: BingXSettings,
+    api: PrivateAPI,
+    settings: BingXSettings,
 ) -> None:
     """Полный сценарий с push-событиями:
 
