@@ -102,3 +102,4 @@ ops/metrics-*.jsonl
 htmlcov/
 ops/batch-*.json
 ops/live-*
+ops/walk-forward-*.json
