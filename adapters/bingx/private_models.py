@@ -361,7 +361,22 @@ class AccountUpdateEvent(_StrictModel):
         )
 
 
-UserStreamEvent = OrderUpdateEvent | AccountUpdateEvent
+class UserStreamReconcileEvent(_StrictModel):
+    """Синтетическое событие, эмитируется адаптером после reconnect.
+
+    Содержит «снимок» состояния через REST — стратегия должна расценивать
+    как «вот что сейчас правда», а не как «свежее событие». Полезно для
+    идемпотентного синка после WS-разрыва (см. plans/07 §3.2).
+    """
+
+    event_type: Literal["RECONCILE"] = "RECONCILE"
+    event_time_ms: int
+    balances: list[Balance] = Field(default_factory=list)
+    positions: list[Position] = Field(default_factory=list)
+    open_orders: list[Order] = Field(default_factory=list)
+
+
+UserStreamEvent = OrderUpdateEvent | AccountUpdateEvent | UserStreamReconcileEvent
 
 
 def parse_user_stream_event(raw: dict[str, object]) -> UserStreamEvent | None:

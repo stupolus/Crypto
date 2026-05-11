@@ -26,6 +26,8 @@ from typing import Any, Literal
 from adapters.bingx.client import BingXClient
 from adapters.bingx.config import BingXConfig
 from adapters.bingx.exceptions import APIError, InvalidResponseError, OrderRejected
+from adapters.bingx.journal import OrderJournal
+from adapters.bingx.metrics import MetricsWriter, OrderMetric, compute_slippage_bps, now_ms
 from adapters.bingx.private_models import (
     Balance,
     Fill,
@@ -140,10 +142,20 @@ class PrivateAPI:
     _LEVERAGE_MIN = 1
     _LEVERAGE_MAX = 125
 
-    def __init__(self, client: BingXClient, config: BingXConfig | None = None) -> None:
+    def __init__(
+        self,
+        client: BingXClient,
+        config: BingXConfig | None = None,
+        *,
+        journal: OrderJournal | None = None,
+        metrics: MetricsWriter | None = None,
+    ) -> None:
         self._client = client
         self._config = config or client.config
         self._endpoints = self._config.rest_endpoints
+        # Опциональны: тесты и smoke без persistence; live — с обоими.
+        self._journal = journal
+        self._metrics = metrics
 
     # ── Read ───────────────────────────────────────────────────────────────
 
@@ -266,12 +278,21 @@ class PrivateAPI:
 
     # ── Orders (фаза 0.D part 1) ───────────────────────────────────────────
 
-    async def place_order(self, req: OrderRequest) -> OrderAck:
+    async def place_order(
+        self,
+        req: OrderRequest,
+        *,
+        request_mark_price: Decimal | None = None,
+    ) -> OrderAck:
         """Разместить ордер. Атомарный entry+SL/TP через stringified JSON.
 
-        Защита: на VST разрешено всё; live-запрет — в фазе 1 (явный гейт).
-        Сейчас защита от случайного live-запуска делается через `BINGX_ENV`
-        в `.env`: пока там `vst`, signed-запросы идут только на VST.
+        ``request_mark_price`` (опц.) — mark price на момент отправки, нужно
+        стратегии для расчёта slippage. Если не передан — slippage не считаем.
+
+        Защита от live: `BINGX_ENV=vst` в .env (по умолчанию).
+
+        Persistence (фаза 0.E): если ``journal`` подключён, записываем
+        ``pending → acked / failed``. Metrics: latency + slippage в JSON-lines.
         """
         params: dict[str, Any] = {
             "symbol": req.symbol,
@@ -300,31 +321,88 @@ class PrivateAPI:
                 working_type=req.working_type,
             )
         coid = req.client_order_id or uuid.uuid4().hex[:32]
-        # Квирк §7 п.23 plans/01: BingX docs-v3 даёт оба имени, на VST принят
-        # `clientOrderID` (как в payload Place Order). Унифицируем.
+        # Квирк §7 п.23: на VST принят `clientOrderID` (как в payload).
         params["clientOrderID"] = coid
-        data = await self._client.request_signed(
-            "POST", self._endpoints.place_order, params=params
-        )
+
+        # Journal: pending до отправки.
+        if self._journal is not None:
+            await self._journal.record_pending(req, coid)
+
+        request_started_ms = now_ms()
+        try:
+            data = await self._client.request_signed(
+                "POST", self._endpoints.place_order, params=params
+            )
+        except Exception as exc:
+            if self._journal is not None:
+                await self._journal.record_failure(coid, f"transport: {exc}")
+            raise
+        ack_received_ms = now_ms()
+
         order_obj = _extract_order_payload(data)
         ack = OrderAck.model_validate(order_obj)
-        # Compensating-close для entry-ордера с attached_stop_loss:
-        # Квирк §7 п.36: attached SL возвращается прямо в ack как
-        # stringified JSON в поле ``stopLoss``. Самостоятельного STOP_MARKET
-        # ордера в /openOrders нет. Проверяем ack.has_attached_stop_loss.
-        # Если пусто — BingX по какой-то причине не сохранил SL → закрываем
-        # позицию рыночным reduce_only.
+        if self._journal is not None:
+            await self._journal.record_ack(coid, ack)
+
+        # Metrics: latency + slippage.
+        if self._metrics is not None:
+            await self._record_metric(
+                coid=coid,
+                req=req,
+                ack=ack,
+                request_started_ms=request_started_ms,
+                ack_received_ms=ack_received_ms,
+                request_mark_price=request_mark_price,
+            )
+
+        # Compensating-close (§7 п.36): SL в ack пуст → close + raise.
         if (
             not req.reduce_only
             and req.attached_stop_loss is not None
             and not ack.has_attached_stop_loss
         ):
             await self.close_position(req.symbol)
+            if self._journal is not None:
+                await self._journal.record_failure(
+                    coid, "compensating_close: SL missing in ack"
+                )
             raise OrderRejected(
                 f"entry order {ack.order_id} placed without confirmed SL in ack "
                 "(stopLoss field empty) — position closed"
             )
         return ack
+
+    async def _record_metric(
+        self,
+        *,
+        coid: str,
+        req: OrderRequest,
+        ack: OrderAck,
+        request_started_ms: int,
+        ack_received_ms: int,
+        request_mark_price: Decimal | None,
+    ) -> None:
+        assert self._metrics is not None
+        avg = (
+            ack.average_price
+            if ack.average_price and ack.average_price > 0
+            else None
+        )
+        slippage = compute_slippage_bps(req.side, request_mark_price, avg)
+        metric = OrderMetric(
+            client_order_id=coid,
+            symbol=req.symbol,
+            side=req.side,
+            type=req.order_type,
+            request_started_ms=request_started_ms,
+            ack_received_ms=ack_received_ms,
+            latency_ms=ack_received_ms - request_started_ms,
+            ack_status=ack.status,
+            request_mark_price=request_mark_price,
+            ack_avg_price=avg,
+            slippage_bps=slippage,
+        )
+        await self._metrics.record(metric)
 
     async def cancel_order(
         self,
