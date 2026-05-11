@@ -100,3 +100,4 @@ ops/metrics-*.jsonl
 .pytest_cache/
 .coverage
 htmlcov/
+ops/batch-*.json
