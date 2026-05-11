@@ -250,20 +250,28 @@ class BingXClient:
         *,
         params: Mapping[str, Any] | None,
     ) -> Any:
-        # Подпись считается на свежем timestamp; sign_query фиксирован
-        # на конкретный набор (включая signature мы НЕ подписываем —
-        # она добавляется уже после расчёта подписи).
+        # Два подтверждённых квирка live BingX VST (2026-05-11, см. plans/01 §7):
+        # 1. Передача `recvWindow` в params/подписи приводит к
+        #    `code=100001 "Signature verification failed"`, даже когда
+        #    значение совпадает с дефолтом docs (5000ms). Не отправляем
+        #    recvWindow вовсе — BingX применит server-side default.
+        # 2. BingX подписывает query string РОВНО в том порядке, в котором
+        #    она пришла в URL — не пересортирует. Поэтому params должны
+        #    уйти в httpx в alpha-sorted порядке (Python dict сохраняет
+        #    insertion order; httpx сохраняет порядок dict при сборке URL).
+        #    Иначе canonical и URL-query разойдутся → reject.
         assert self._api_secret is not None  # checked by caller
         assert self._api_key is not None
         ts_ms = await self._time_syncer.now_ms()
-        merged: dict[str, Any] = dict(params or {})
-        merged["timestamp"] = ts_ms
-        merged["recvWindow"] = self._config.signing.recv_window_ms
-        signature = sign_query(merged, self._api_secret)
-        merged["signature"] = signature
+        biz: dict[str, Any] = dict(params or {})
+        biz["timestamp"] = ts_ms
+        # Sorted dict: сортируем по ключу, сохраняем порядок для httpx.
+        sorted_biz: dict[str, Any] = dict(sorted(biz.items()))
+        signature = sign_query(sorted_biz, self._api_secret)
+        sorted_biz["signature"] = signature
         await self._market_bucket.acquire()
         headers = {self._config.signing.api_key_header: self._api_key}
-        return await self._send_with_retry(method, path, params=merged, headers=headers)
+        return await self._send_with_retry(method, path, params=sorted_biz, headers=headers)
 
     # ── Внутренности ───────────────────────────────────────────────────────
     async def _send_with_retry(

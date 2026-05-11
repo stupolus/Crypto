@@ -331,6 +331,8 @@ class ExchangeAdapter(Protocol):
 | 27 | **WS-формат интервала в канале klines = REST-формат (`1m`), а не `1min`.** Реальное поведение live BingX (integration-тест 2026-05-10): подписка на `BTC-USDT@kline_1min` отвергается `code=80015 "dataType not support"`. Принимается только `BTC-USDT@kline_1m`. Противоречит docs-v3 §«USDT-M Perp Futures → WebSocket → Subscriptions», где явно указано `1min`. | подтверждено на live (расходится с docs) | `adapters/bingx/config.yaml`: `intervals_ws = intervals_rest`. Маппинг REST↔WS оставлен в адаптере как failsafe — на случай, если BingX вернёт документированное поведение. Зафиксировано integration-тестом. |
 | 28 | **`/openApi/swap/v2/quote/contracts` не отдаёт `maxLongLeverage`/`maxShortLeverage` в live-ответе** — поля есть только в примере docs. Реальный ответ содержит `size`, `tradeMinLimit`, `apiStateOpen`, `apiStateClose`, `ensureTrigger`, `triggerFeeRate`, `launchTime`, `maintainTime`, `offTime`, `displayName`. Подтверждено integration-тестом 2026-05-10. | подтверждено на live (расходится с docs) | `Contract.max_long_leverage`/`.max_short_leverage` — `Optional[int]`. Реальное плечо берётся через `POST /openApi/swap/v2/trade/leverage` в фазе 0.C. |
 | 29 | **Klines возвращаются DESC** (newest first), а не ASC. Не указано явно в docs-v3, но подтверждено integration-тестом 2026-05-10. | подтверждено на live | `PublicAPI.get_klines` локально сортирует по `open_time_ms` ASC — стратегии/бэктест получают удобный time-series порядок без сюрпризов. |
+| 30 | **`recvWindow` в подписанных запросах приводит к `code=100001 "Signature verification failed"`** даже когда значение совпадает с дефолтом docs (5000ms). Подтверждено на live VST 2026-05-11 для `GET /user/balance`, `POST /trade/marginType`, `POST /trade/leverage`. Противоречит п.18 (docs) и п.19 (где `recvWindow` упоминается как стандартный параметр). Без `recvWindow` в payload — BingX применяет server-side default и принимает подпись. | подтверждено на live VST (расходится с docs) | `BingXClient._do_signed` не отправляет `recvWindow`. Поле `signing.recv_window_ms` в `config.yaml` оставлено как декларация (на случай если BingX вернёт документированное поведение либо для будущих ордеров). Unit-тест `test_signed_request_includes_signature_apikey_and_recv_window` явно проверяет, что `recvWindow` отсутствует в URL. |
+| 31 | **BingX подписывает query string в том порядке, в котором она пришла в URL — не пересортирует.** Подтверждено на live VST 2026-05-11: одни и те же ASCII-сортированные параметры с `httpx params={"symbol":..., "marginType":..., "timestamp":...}` (insertion-order) дают `code=100001`, а те же параметры в alpha-sorted порядке (`{"marginType":..., "symbol":..., "timestamp":...}`) принимаются. Противоречит п.18 docs, где явно сказано «параметры сортируются по ASCII при формировании подписи» — без оговорки, что отправлять их в URL нужно в том же порядке. | подтверждено на live VST (расходится с docs) | `BingXClient._do_signed`: перед отправкой params пересоздаются как `dict(sorted(...))` — Python dict сохраняет insertion order, httpx ретранслирует его в URL. `signature` добавляется последним. Unit-тест `test_signed_request_emits_params_in_alpha_sorted_order` фиксирует ожидаемый порядок. |
 
 ---
 
@@ -459,12 +461,13 @@ class ExchangeAdapter(Protocol):
 - ✅ Найдено и зафиксировано **3 новых квирка live BingX** (§7 п.27–29) расходящихся с docs-v3: WS-формат интервала = REST-форма; `maxLongLeverage` отсутствует в live `/contracts`; klines возвращаются DESC.
 - **Артефакт:** `await PublicAPI(client, cfg).get_klines("BTC-USDT", "15m", limit=...)` отдаёт типизированный `list[Kline]` ASC по времени, `BingXMarketWebSocket.subscribe("BTC-USDT@kline_1m")` отдаёт async-iterator data-фреймов с авто-реконнектом.
 
-### Фаза 0.C — Аутентификация и приватный read (1 сессия)
-- `signer.py`, sync времени.
-- `get_balance`, `get_positions`, `get_open_orders`, `get_fills`.
-- `set_margin_mode`, `set_leverage`, `set_position_mode`.
-- Unit + integration на VST.
-- Smoke на VST: `connect → get_balance → disconnect` без падений.
+### Фаза 0.C — Аутентификация и приватный read (закрыта 2026-05-11)
+- ✅ `BingXSettings` (pydantic-settings, env_prefix=`BINGX_`) — чтение ключей из `.env`. `active_key`/`active_secret` по полю `env`. `BINGX_ENV=vst` имеет приоритет над YAML.
+- ✅ `ServerTimeSyncer` — `offset = server - local`, ленивый pull, resync не чаще `signing.server_time_resync_interval_s` (5 мин). Авто-resync + 1 ретрай при `code=109400`/timestamp errors.
+- ✅ `PrivateAPI`: `get_balance`, `get_positions`, `get_open_orders`, `get_fills` — типизированные модели (Balance/Position/Order/Fill) на `Decimal`. `set_margin_mode`, `set_leverage`, `set_position_mode` — idempotent (ловят BingX-коды/сообщения «no need to switch»).
+- ✅ 33 unit-теста (respx). Coverage **84.76%** (target ≥70%). ruff + mypy strict — чисто.
+- ✅ Integration на VST: **10/10 зелёные** (4 публичных + 6 приватных). Smoke `set_margin_mode → set_leverage → get_balance` без падений.
+- ✅ Найдено **2 новых квирка** live BingX VST (см. §7 п.30–31): `recvWindow` в подписи → reject; BingX требует параметры в URL в alpha-sorted порядке (не пересортирует подпись на своей стороне).
 
 ### Фаза 0.D — Trading и kill switch (2 сессии)
 - `place_order` (market, limit, stop_market, stop_limit, tp_market).
@@ -495,19 +498,18 @@ class ExchangeAdapter(Protocol):
 
 ## 13. Что СЕЙЧАС, в ближайшую сессию
 
-Фаза 0.A и 0.B закрыты. **Следующая сессия — фаза 0.C (приватные read-методы на VST).**
+Фазы 0.A, 0.B, 0.C закрыты. **Следующая сессия — фаза 0.D (ордера и kill switch).**
 
-Конкретные задачи следующей сессии (из §11, фаза 0.C):
-1. Создать demo-ключи в [BingX → Demo Trading](https://bingx.com/en/accounts/api). Положить в `.env` как `BINGX_VST_API_KEY` / `BINGX_VST_API_SECRET`. IP whitelist — VPS-IP (`187.124.41.13`) и/или текущий рабочий IP.
-2. Расширить `adapters/bingx/config.py`: добавить `Settings` (pydantic-settings) для чтения ключей из `.env` без коммита.
-3. Подключить `BingXClient.request_signed` (уже реализован в §3 как заготовка) и проверить подпись HMAC-SHA256 на smoke-вызове `GET /openApi/swap/v2/user/balance` через VST.
-4. Реализовать приватные read-методы: `get_balance`, `get_positions`, `get_open_orders`, `get_fills`.
-5. Реализовать setters (idempotent): `set_margin_mode(ISOLATED)`, `set_leverage`, `set_position_mode(one-way)`. Эти три — обязательные пререквизиты для любых ордеров фазы 0.D.
-6. Sync серверного времени: использовать `PublicAPI.get_server_time` + `BingXConfig.signing.server_time_resync_interval_s` как периодическую корректировку offset.
-7. Unit + integration на VST.
-8. Smoke-тест на VST: `connect → set_margin_mode → set_leverage → get_balance → disconnect` без падений.
+Конкретные задачи следующей сессии (из §11, фаза 0.D):
+1. Реализовать `place_order` (market, limit, stop_market, stop_limit, tp_market). Атомарность entry+SL через attached SL/TP в одном запросе (см. §4.1 и квирк §7 п.6). Никогда не отправляем entry без attached stop — это инвариант риск-движка.
+2. Реализовать `cancel_order`, `cancel_all`, `close_position`.
+3. Подключить `Cancel All After` (`POST /openApi/swap/v2/trade/cancelAllAfter`, см. §7 п.24) как биржевой dead-man timer — страховка от сетевых разрывов.
+4. Реализовать `stream_user_events` — User Data Stream (`listenKey` + `wss://...?listenKey=...`, см. §7 п.15–17). Reconcile состояния после reconnect.
+5. ⚠️ **Перепроверить квирки 0.C на write-методах:** `recvWindow` в подписи (п.30) и порядок параметров (п.31) уже зафиксированы для read/setters. Для write — те же фиксы должны работать (логика подписи общая), но smoke на каждом методе обязателен.
+6. Полный integration-сценарий на VST: открыть позицию с attached SL → отменить → закрыть → проверить fills.
+7. Unit + integration.
 
-**Параллельно** (другая сессия / другой контекст) можно начать `plans/04-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
+**Параллельно** (другая сессия / другой контекст) можно начать `plans/05-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
 
 ---
 
@@ -533,6 +535,16 @@ class ExchangeAdapter(Protocol):
 - `adapters/bingx/tests/`: 39 unit-тестов с respx + 4 integration-теста против live BingX. Покрытие 83.02%.
 - §7 пополнен 3 новыми квирками (п.27–29) на основе живых данных, расходящихся с docs.
 - §13 переключён на фазу 0.C (приватные read на VST). §11 фаза 0.B помечена закрытой.
+
+Сессия 2026-05-11 (фаза 0.C — приватный read + idempotent setters на VST):
+- `plans/04-фаза-0C.md` — план фазы (контекст, скоуп, 10 причин провала, чек-лист).
+- `adapters/bingx/settings.py` (`BingXSettings`, pydantic-settings), `time_sync.py` (`ServerTimeSyncer`), `private_models.py` (Balance/Position/Order/Fill на Decimal), `private.py` (`PrivateAPI`: 4 read + 3 idempotent setters), `.env.example`.
+- `BingXClient` расширен: интеграция Settings, time-syncer, авто-resync на timestamp-ошибках. `Settings.env` приоритетнее YAML.
+- `config.yaml`/`config.py`: добавлены приватные REST-эндпоинты.
+- 33 новых unit-теста, общее покрытие **84.76%**. ruff + mypy strict — чисто.
+- Integration на live VST: **10/10 зелёные**. Smoke `set_margin_mode → set_leverage → get_balance` прошёл.
+- §7 пополнен 2 новыми квирками (п.30–31): `recvWindow` отсутствует в подписи; параметры в URL в alpha-sorted порядке. Оба зафиксированы unit-тестами.
+- §11 фаза 0.C помечена закрытой. §13 переключён на фазу 0.D (ордера + kill switch).
 
 ---
 

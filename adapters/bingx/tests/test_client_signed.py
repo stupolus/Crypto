@@ -58,11 +58,48 @@ async def test_signed_request_includes_signature_apikey_and_recv_window(
     assert call.request.headers[cfg.signing.api_key_header] == _TEST_KEY
     params = dict(call.request.url.params)
     assert "timestamp" in params
-    assert int(params["recvWindow"]) == cfg.signing.recv_window_ms
+    # Квирк live BingX VST 2026-05-11: recvWindow в подписи/query → 100001.
+    # См. plans/01 §7 и client._do_signed.
+    assert "recvWindow" not in params
     # Подпись должна верифицироваться тем же алгоритмом.
     signature = params.pop("signature")
     expected = sign_query(params, _TEST_SECRET)
     assert signature == expected
+
+
+@pytest.mark.asyncio
+async def test_signed_request_emits_params_in_alpha_sorted_order(
+    cfg: BingXConfig,
+) -> None:
+    """Квирк live BingX (plans/01 §7): подпись считается от URL query в том
+    порядке, в котором она пришла — не пересортируется. Поэтому params в URL
+    должны быть в алфавитном порядке, и подпись добавляется последним.
+    """
+    async with BingXClient(
+        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
+    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+        _stub_server_time(mock, cfg)
+        # Передаём «неотсортированные» бизнес-параметры, ожидаем sorted в URL.
+        route = mock.post(cfg.rest_endpoints.set_margin_type).mock(
+            return_value=httpx.Response(200, json=_ok_envelope({}))
+        )
+        # Прямой вызов request_signed с произвольным порядком ключей.
+        await client.request_signed(
+            "POST",
+            cfg.rest_endpoints.set_margin_type,
+            params={"symbol": "BTC-USDT", "marginType": "ISOLATED"},
+        )
+
+    url = str(route.calls.last.request.url)
+    query = url.split("?", 1)[1]
+    keys_in_url = [pair.split("=", 1)[0] for pair in query.split("&")]
+    # signature всегда последний (добавляется после расчёта подписи).
+    assert keys_in_url[-1] == "signature"
+    # Бизнес-ключи + timestamp в алфавитном порядке.
+    non_sig_keys = keys_in_url[:-1]
+    assert non_sig_keys == sorted(non_sig_keys), (
+        f"params must be alpha-sorted, got {non_sig_keys}"
+    )
 
 
 @pytest.mark.asyncio

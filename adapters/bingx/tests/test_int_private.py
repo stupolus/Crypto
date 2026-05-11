@@ -62,12 +62,14 @@ def api(client: BingXClient) -> PrivateAPI:
 
 
 @pytest.mark.asyncio
-async def test_int_get_balance_returns_usdt(api: PrivateAPI) -> None:
-    """VST-баланс должен содержать ≥1 актив, ожидаемо USDT (BingX выдаёт virtual)."""
+async def test_int_get_balance_returns_vst_or_usdt(api: PrivateAPI) -> None:
+    """На VST аккаунте актив называется ``VST`` (виртуальный USDT). На live
+    аккаунте — ``USDT``. Тест принимает оба варианта.
+    """
     balances = await api.get_balance()
-    assert balances, "ожидаем хотя бы один актив на VST"
-    assets = [b.asset for b in balances]
-    assert "USDT" in assets, f"USDT not in {assets}"
+    assert balances, "ожидаем хотя бы один актив"
+    assets = {b.asset for b in balances}
+    assert assets & {"VST", "USDT"}, f"ни VST, ни USDT не найдены: {assets}"
 
 
 @pytest.mark.asyncio
