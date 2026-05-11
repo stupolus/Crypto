@@ -328,6 +328,9 @@ class ExchangeAdapter(Protocol):
 | 24 | **`Cancel All After`** (`POST /openApi/swap/v2/trade/cancelAllAfter`) — биржевой dead-man timer: если адаптер не «погладит» биржу за N мс, она сама отменит все ордера. | подтверждено в docs | Дополняет клиентский kill switch на сетевые дисконнекты. Включаем на старте сессии, пингуем периодически. |
 | 25 | **Слиппедж и спред на BTC-USDT.** Не уточнено в docs (это рыночные данные). Замер на VST (фаза 0.B–0.E) и зафиксировать в [[бизнес/инструменты-bingx]]. | требует измерения на VST | Бенчмарк latency и slippage (см. §9.1 «Bench/measurement»). |
 | 26 | **Поведение API в моменты ликвидаций / крупных движений.** Не уточнено в docs (нет SLA на ack). | требует наблюдения | Адаптер логирует ack-latency на каждый ордер; смотрим эмпирику до фазы 1 deploy. |
+| 27 | **WS-формат интервала в канале klines = REST-формат (`1m`), а не `1min`.** Реальное поведение live BingX (integration-тест 2026-05-10): подписка на `BTC-USDT@kline_1min` отвергается `code=80015 "dataType not support"`. Принимается только `BTC-USDT@kline_1m`. Противоречит docs-v3 §«USDT-M Perp Futures → WebSocket → Subscriptions», где явно указано `1min`. | подтверждено на live (расходится с docs) | `adapters/bingx/config.yaml`: `intervals_ws = intervals_rest`. Маппинг REST↔WS оставлен в адаптере как failsafe — на случай, если BingX вернёт документированное поведение. Зафиксировано integration-тестом. |
+| 28 | **`/openApi/swap/v2/quote/contracts` не отдаёт `maxLongLeverage`/`maxShortLeverage` в live-ответе** — поля есть только в примере docs. Реальный ответ содержит `size`, `tradeMinLimit`, `apiStateOpen`, `apiStateClose`, `ensureTrigger`, `triggerFeeRate`, `launchTime`, `maintainTime`, `offTime`, `displayName`. Подтверждено integration-тестом 2026-05-10. | подтверждено на live (расходится с docs) | `Contract.max_long_leverage`/`.max_short_leverage` — `Optional[int]`. Реальное плечо берётся через `POST /openApi/swap/v2/trade/leverage` в фазе 0.C. |
+| 29 | **Klines возвращаются DESC** (newest first), а не ASC. Не указано явно в docs-v3, но подтверждено integration-тестом 2026-05-10. | подтверждено на live | `PublicAPI.get_klines` локально сортирует по `open_time_ms` ASC — стратегии/бэктест получают удобный time-series порядок без сюрпризов. |
 
 ---
 
@@ -446,13 +449,15 @@ class ExchangeAdapter(Protocol):
 - Артефакт: коммит на ветке `claude/infallible-proskuriakova-6e981c`.
 - **НЕТ кода.**
 
-### Фаза 0.B — Каркас + публичные методы (1–2 сессии)
-- Структура папок, `pyproject.toml`/`requirements`, базовые dataclasses.
-- `BingXAdapter` skeleton с raise NotImplementedError.
-- Реализация публичных REST-методов: `list_symbols`, `get_klines`, `get_funding_rate`, `get_open_interest`, `get_ticker`.
-- WebSocket: `stream_klines`, `stream_ticker`, базовый reconnect.
-- Unit-тесты + интеграционная проба к публичному API (без ключа).
-- **Артефакт:** ребятам можно `get_klines("BTC-USDT", "15m", since=...)` и получить данные.
+### Фаза 0.B — Каркас + публичные методы (1–2 сессии) — ЗАКРЫТА 2026-05-10
+- ✅ Структура `adapters/bingx/` (10 модулей), `pyproject.toml` (httpx, websockets, pydantic, pydantic-settings, pyyaml, ruff, mypy, pytest, respx).
+- ✅ `BingXClient` — async HTTP-клиент: подпись HMAC-SHA256 (как заготовка для фазы 0.C), token-bucket rate limit (350/10s — 70% от официальных), retry-policy на 429/5xx с экспоненциальным backoff, разбор envelope `{code, msg, data}` с `code!=0` → `APIError`.
+- ✅ Pydantic-модели `Contract`, `Ticker`, `Kline`, `ServerTime` — все денежные поля `Decimal`, валидация дефиса в `symbol`, `extra="ignore"` для устойчивости к новым полям BingX.
+- ✅ `PublicAPI`: `get_server_time`, `get_contracts`/`get_contract`, `get_ticker`, `get_klines` — с локальной валидацией `limit ≤ 1440` и сортировкой свечей ASC.
+- ✅ `BingXMarketWebSocket`: gzip-декомпрессия, текстовый Ping/Pong (литералы, не JSON), session-loop с прозрачным авто-реконнектом и переподпиской, async-iterator API, watchdog на тишину 30 с.
+- ✅ Тесты: **39 unit** (respx-моки) + **4 integration** (live public API). Покрытие **83.02%** (target ≥70%). Линтеры: ruff + mypy strict — чистые.
+- ✅ Найдено и зафиксировано **3 новых квирка live BingX** (§7 п.27–29) расходящихся с docs-v3: WS-формат интервала = REST-форма; `maxLongLeverage` отсутствует в live `/contracts`; klines возвращаются DESC.
+- **Артефакт:** `await PublicAPI(client, cfg).get_klines("BTC-USDT", "15m", limit=...)` отдаёт типизированный `list[Kline]` ASC по времени, `BingXMarketWebSocket.subscribe("BTC-USDT@kline_1m")` отдаёт async-iterator data-фреймов с авто-реконнектом.
 
 ### Фаза 0.C — Аутентификация и приватный read (1 сессия)
 - `signer.py`, sync времени.
@@ -490,19 +495,19 @@ class ExchangeAdapter(Protocol):
 
 ## 13. Что СЕЙЧАС, в ближайшую сессию
 
-Фаза 0.A закрыта. **Следующая сессия — фаза 0.B (каркас + публичные методы).**
+Фаза 0.A и 0.B закрыты. **Следующая сессия — фаза 0.C (приватные read-методы на VST).**
 
-Конкретные задачи следующей сессии (из §11, фаза 0.B):
-1. `pyproject.toml`/`requirements`: фиксируем `httpx`, `websockets`, `pydantic-settings`, `respx` (для тестов), `pytest-asyncio`, `python-dotenv`. Версии — пиннуем после оценки.
-2. Структура `adapters/base.py`, `adapters/errors.py`, `adapters/bingx/` по §3.
-3. Доменные dataclasses (`Symbol`, `SymbolMeta`, `Candle`, `Ticker`, `FundingRate`, `Position`, `OpenOrder`, `Fill`, `AccountBalance`, `OrderRequest`, `UserEvent`).
-4. `BingXAdapter` skeleton: все методы `raise NotImplementedError`. Конструктор берёт base URL из конфига (live/VST), HTTP-клиент инициализирован с retry-policy.
-5. Реализация **публичных** REST-методов (без подписи): `list_symbols` (`/openApi/swap/v2/quote/contracts`), `get_klines` (`/openApi/swap/v3/quote/klines`), `get_funding_rate` (`/openApi/swap/v2/quote/premiumIndex`), `get_funding_history` (`/openApi/swap/v2/quote/fundingRate`), `get_open_interest` (`/openApi/swap/v2/quote/openInterest`), `get_ticker` (`/openApi/swap/v2/quote/ticker`).
-6. Базовый WS-клиент: подключение к `wss://open-api-swap.bingx.com/swap-market` (live) / `wss://vst-open-api-ws.bingx.com/swap-market` (VST), gzip-декомпрессия, текстовый Ping/Pong, sub/unsub-протокол. `stream_klines`, `stream_ticker` — поверх.
-7. Unit-тесты + интеграционная проба к публичному API (без ключа): достаём список контрактов и валидируем, что `tradeMinUSDT=2` для BTC-USDT (защита от тихого изменения).
-8. **Артефакт:** можно вызвать `await adapter.get_klines("BTC-USDT", "15m", since=...)` и получить список свечей.
+Конкретные задачи следующей сессии (из §11, фаза 0.C):
+1. Создать demo-ключи в [BingX → Demo Trading](https://bingx.com/en/accounts/api). Положить в `.env` как `BINGX_VST_API_KEY` / `BINGX_VST_API_SECRET`. IP whitelist — VPS-IP (`187.124.41.13`) и/или текущий рабочий IP.
+2. Расширить `adapters/bingx/config.py`: добавить `Settings` (pydantic-settings) для чтения ключей из `.env` без коммита.
+3. Подключить `BingXClient.request_signed` (уже реализован в §3 как заготовка) и проверить подпись HMAC-SHA256 на smoke-вызове `GET /openApi/swap/v2/user/balance` через VST.
+4. Реализовать приватные read-методы: `get_balance`, `get_positions`, `get_open_orders`, `get_fills`.
+5. Реализовать setters (idempotent): `set_margin_mode(ISOLATED)`, `set_leverage`, `set_position_mode(one-way)`. Эти три — обязательные пререквизиты для любых ордеров фазы 0.D.
+6. Sync серверного времени: использовать `PublicAPI.get_server_time` + `BingXConfig.signing.server_time_resync_interval_s` как периодическую корректировку offset.
+7. Unit + integration на VST.
+8. Smoke-тест на VST: `connect → set_margin_mode → set_leverage → get_balance → disconnect` без падений.
 
-Параллельно (другая сессия / другой контекст) можно начать `plans/04-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
+**Параллельно** (другая сессия / другой контекст) можно начать `plans/04-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
 
 ---
 
@@ -521,6 +526,13 @@ class ExchangeAdapter(Protocol):
 - Уточнён §4.4 (klines: V3-формат, 1440 limit, разные интервалы REST vs WS).
 - Снят блокер фазы 1 (§10 п.7): `tradeMinUSDT=2` для BTC-USDT, $1 000 капитала проходит без правок мастер-плана.
 - Фаза 0.A помечена закрытой; §13 переключён на фазу 0.B.
+
+Сессия 2026-05-10 (фаза 0.B — каркас + публичные методы, первый код в проекте):
+- `pyproject.toml` (Python 3.12+, ruff + mypy strict + pytest + coverage + httpx + websockets + pydantic + pydantic-settings).
+- `adapters/bingx/` целиком: `config.yaml` (все числа со ссылками на источники), `config.py` (pydantic-валидация YAML), `exceptions.py`, `models.py` (Contract/Ticker/Kline/ServerTime на Decimal), `client.py` (async HTTP + sign_query + token-bucket + retry), `public.py` (4 публичных метода), `websocket.py` (gzip + Ping/Pong + auto-reconnect).
+- `adapters/bingx/tests/`: 39 unit-тестов с respx + 4 integration-теста против live BingX. Покрытие 83.02%.
+- §7 пополнен 3 новыми квирками (п.27–29) на основе живых данных, расходящихся с docs.
+- §13 переключён на фазу 0.C (приватные read на VST). §11 фаза 0.B помечена закрытой.
 
 ---
 

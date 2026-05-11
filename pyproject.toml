@@ -1,0 +1,100 @@
+[project]
+name = "crypto"
+version = "0.0.1"
+description = "Algorithmic trading platform for crypto, RWA-perps and tokenized stocks (BingX-first)"
+requires-python = ">=3.12"
+readme = "README.md"
+
+dependencies = [
+    "httpx>=0.28,<0.29",
+    "websockets>=14,<15",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<0.27",
+    "pytest-cov>=6.0,<7",
+    "respx>=0.22,<0.23",
+    "ruff>=0.9,<0.10",
+    "mypy>=1.14,<2",
+    "types-pyyaml>=6.0,<7",
+]
+
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["adapters*"]
+exclude = ["venv*", "tests*"]
+
+# ─── Ruff ────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",   # line-too-long handled by formatter
+    "RUF001", # ambiguous chars in strings (false-positives для русского)
+    "RUF002", # ambiguous chars in docstrings (false-positives для русского)
+    "RUF003", # ambiguous chars in comments (false-positives для русского)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"adapters/bingx/tests/*" = ["B011"]  # asserts ok in tests
+
+# ─── mypy ────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+exclude = ["venv", ".venv", "build"]
+
+[[tool.mypy.overrides]]
+module = ["respx.*"]
+ignore_missing_imports = true
+
+# ─── pytest ──────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["adapters/bingx/tests"]
+markers = [
+    "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
+]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "-m", "not integration",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["adapters/bingx"]
+omit = ["adapters/bingx/tests/*"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_covered = false
