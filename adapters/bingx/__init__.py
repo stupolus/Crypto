@@ -1,10 +1,10 @@
 """BingX-адаптер (USDT-M perpetual).
 
-Публичный API фазы 0.B: загрузка конфига, базовый HTTP-клиент и
-типизированные публичные REST-методы, плюс WS-каркас на market data.
+Публичный API:
+- Фаза 0.B — публичные REST (`PublicAPI`) + WS market data (`BingXMarketWebSocket`).
+- Фаза 0.C — приватный read + idempotent setters (`PrivateAPI`).
 
-Приватные эндпоинты (баланс, позиции, ордера) — фаза 0.C/0.D, см.
-``plans/01-bingx-адаптер.md`` §11.
+Ордерные методы — фаза 0.D, см. ``plans/01-bingx-адаптер.md`` §11.
 """
 
 from adapters.bingx.client import BingXClient, sign_query
@@ -21,28 +21,55 @@ from adapters.bingx.exceptions import (
     WebSocketError,
 )
 from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
+from adapters.bingx.private import PrivateAPI
+from adapters.bingx.private_models import (
+    Balance,
+    Fill,
+    MarginType,
+    Order,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    Position,
+    PositionSide,
+)
 from adapters.bingx.public import PublicAPI
+from adapters.bingx.settings import BingXSettings, load_settings
+from adapters.bingx.time_sync import ServerTimeSyncer
 from adapters.bingx.websocket import BingXMarketWebSocket
 
 __all__ = [
     "APIError",
     "AuthError",
+    "Balance",
     "BingXClient",
     "BingXConfig",
     "BingXError",
     "BingXMarketWebSocket",
+    "BingXSettings",
     "ConfigError",
     "Contract",
+    "Fill",
     "InvalidResponseError",
     "Kline",
+    "MarginType",
     "NetworkError",
+    "Order",
+    "OrderSide",
+    "OrderStatus",
+    "OrderType",
+    "Position",
+    "PositionSide",
+    "PrivateAPI",
     "PublicAPI",
     "RateLimited",
     "ServerError",
     "ServerTime",
+    "ServerTimeSyncer",
     "Ticker",
     "WebSocketError",
     "get_default_config",
     "load_config",
+    "load_settings",
     "sign_query",
 ]
