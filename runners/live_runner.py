@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from adapters.bingx.client import BingXClient
+from adapters.bingx.exceptions import AuthError, OrderRejected
 from adapters.bingx.journal import OrderJournal
 from adapters.bingx.metrics import MetricsWriter
 from adapters.bingx.models import Kline
@@ -51,6 +52,7 @@ from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.user_stream import BingXUserDataStream
 from adapters.bingx.websocket import BingXMarketWebSocket
+from core.alerts import Alerter, StdoutAlerter
 from core.backtest.models import OpenPosition, StrategyContext
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
@@ -194,6 +196,9 @@ async def run(args: argparse.Namespace) -> None:
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)
 
+        alerter: Alerter = StdoutAlerter()
+        await alerter.send_info(f"runner starting: strategy={args.strategy} symbol={args.symbol}")
+
         async with BingXUserDataStream(private_api) as user_stream:
             user_task = asyncio.create_task(
                 _user_events_loop(user_stream, strategy, state, journal),
@@ -207,12 +212,16 @@ async def run(args: argparse.Namespace) -> None:
                     state=state,
                     private_api=private_api,
                     stop_event=stop_event,
+                    alerter=alerter,
                 )
             finally:
                 stop_event.set()
                 user_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await user_task
+                await alerter.send_info(
+                    f"runner stopped: strategy={args.strategy} symbol={args.symbol}"
+                )
 
     logger.info("live runner stopped cleanly")
 
@@ -340,6 +349,7 @@ async def _candle_loop(
     state: RunnerState,
     private_api: PrivateAPI,
     stop_event: asyncio.Event,
+    alerter: Alerter,
 ) -> None:
     """Подписка на market WS + обработка закрытых свечей."""
     channel = f"{args.symbol}@kline_{args.interval}"
@@ -353,7 +363,7 @@ async def _candle_loop(
             candle = _decode_kline_message(dict(msg))
             if candle is None:
                 continue
-            await _handle_closed_candle(candle, args, strategy, state, private_api)
+            await _handle_closed_candle(candle, args, strategy, state, private_api, alerter)
 
 
 async def _handle_closed_candle(
@@ -362,6 +372,7 @@ async def _handle_closed_candle(
     strategy: Any,
     state: RunnerState,
     private_api: PrivateAPI,
+    alerter: Alerter,
 ) -> None:
     # Append + trim history к разумному размеру (warm-up * 2).
     state.candles_history.append(candle)
@@ -377,8 +388,9 @@ async def _handle_closed_candle(
     )
     try:
         request = strategy.on_candle_close(ctx)
-    except Exception:
+    except Exception as exc:
         logger.exception("strategy.on_candle_close failed")
+        await alerter.send_critical(f"strategy.on_candle_close failed: {exc}")
         return
     if request is None:
         return
@@ -395,8 +407,19 @@ async def _handle_closed_candle(
     try:
         ack = await private_api.place_order(request, request_mark_price=candle.close)
         logger.info("order placed: %s status=%s", ack.order_id, ack.status)
-    except Exception:
+    except OrderRejected as exc:
+        # Compensating-close уже сработал. Это критично — позиция была
+        # закрыта автоматически, стратегия должна знать.
+        logger.error("OrderRejected: %s", exc)
+        await alerter.send_critical(f"OrderRejected on {request.symbol}: {exc}")
+    except AuthError as exc:
+        # Ключи невалидны / истекли. Бот не должен продолжать.
+        logger.exception("AuthError")
+        await alerter.send_critical(f"AuthError on {request.symbol}: {exc}. Stopping runner.")
+        raise
+    except Exception as exc:
         logger.exception("place_order failed")
+        await alerter.send_warning(f"place_order failed on {request.symbol}: {exc}")
 
 
 def main() -> None:
