@@ -21,6 +21,8 @@ from adapters.bingx.exceptions import (
     ServerError,
     WebSocketError,
 )
+from adapters.bingx.journal import JournalEntry, OrderJournal
+from adapters.bingx.metrics import MetricsWriter, OrderMetric, compute_slippage_bps
 from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
 from adapters.bingx.private import PrivateAPI
 from adapters.bingx.private_models import (
@@ -42,6 +44,7 @@ from adapters.bingx.private_models import (
     PositionSide,
     TimeInForce,
     UserStreamEvent,
+    UserStreamReconcileEvent,
     parse_user_stream_event,
 )
 from adapters.bingx.public import PublicAPI
@@ -67,11 +70,15 @@ __all__ = [
     "EntryOrderType",
     "Fill",
     "InvalidResponseError",
+    "JournalEntry",
     "Kline",
     "MarginType",
+    "MetricsWriter",
     "NetworkError",
     "Order",
     "OrderAck",
+    "OrderJournal",
+    "OrderMetric",
     "OrderRejected",
     "OrderRequest",
     "OrderSide",
@@ -90,7 +97,9 @@ __all__ = [
     "Ticker",
     "TimeInForce",
     "UserStreamEvent",
+    "UserStreamReconcileEvent",
     "WebSocketError",
+    "compute_slippage_bps",
     "get_default_config",
     "load_config",
     "load_settings",

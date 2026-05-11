@@ -32,7 +32,11 @@ from websockets.asyncio.client import ClientConnection
 from adapters.bingx.config import BingXConfig
 from adapters.bingx.exceptions import WebSocketError
 from adapters.bingx.private import PrivateAPI
-from adapters.bingx.private_models import UserStreamEvent, parse_user_stream_event
+from adapters.bingx.private_models import (
+    UserStreamEvent,
+    UserStreamReconcileEvent,
+    parse_user_stream_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +159,10 @@ class BingXUserDataStream:
         url = f"{ws_base}?listenKey={self._listen_key}"
         self._conn = await self._connect_factory(url)
         self._connected_event.set()
+        # Reconcile: после (ре)коннекта эмитим снимок состояния через REST
+        # ДО первых WS-событий. Стратегия инициализирует/синкает state.
+        with suppress(Exception):
+            await self._emit_reconcile()
         try:
             await self._read_loop()
         finally:
@@ -164,6 +172,21 @@ class BingXUserDataStream:
             with suppress(Exception):
                 if conn is not None:
                     await conn.close()
+
+    async def _emit_reconcile(self) -> None:
+        """REST-снимок balance + positions + open_orders → RECONCILE event."""
+        import time as _time
+
+        balances = await self._api.get_balance()
+        positions = await self._api.get_positions()
+        open_orders = await self._api.get_open_orders()
+        event = UserStreamReconcileEvent(
+            event_time_ms=int(_time.time() * 1000),
+            balances=balances,
+            positions=positions,
+            open_orders=open_orders,
+        )
+        await self._queue.put(event)
 
     async def _read_loop(self) -> None:
         assert self._conn is not None

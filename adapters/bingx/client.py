@@ -49,6 +49,42 @@ from adapters.bingx.exceptions import (
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.time_sync import ServerTimeSyncer
 
+# ── Логирование/маскирование секретов (фаза 0.E) ────────────────────────────
+# Никогда не логируем сырые `signature` и `X-BX-APIKEY`.
+_SENSITIVE_QUERY_PARAMS = ("signature",)
+_SENSITIVE_HEADERS_CI = ("x-bx-apikey",)
+_MASK = "***"
+
+
+def mask_signed_url(url: str) -> str:
+    """Заменить значения чувствительных query-параметров на ``***``.
+
+    Полезно для логирования signed-запросов: ``...&signature=abcd1234`` →
+    ``...&signature=***``.
+    """
+    if "?" not in url:
+        return url
+    base, query = url.split("?", 1)
+    masked_parts: list[str] = []
+    for part in query.split("&"):
+        if "=" not in part:
+            masked_parts.append(part)
+            continue
+        key, _ = part.split("=", 1)
+        if key.lower() in _SENSITIVE_QUERY_PARAMS:
+            masked_parts.append(f"{key}={_MASK}")
+        else:
+            masked_parts.append(part)
+    return f"{base}?{'&'.join(masked_parts)}"
+
+
+def mask_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    """Вернуть копию headers с замаскированными значениями ключей API."""
+    return {
+        k: (_MASK if k.lower() in _SENSITIVE_HEADERS_CI else v)
+        for k, v in headers.items()
+    }
+
 # Бизнес-коды BingX, означающие «локальный timestamp не попадает в recvWindow
 # серверного времени». 100400 — generic «parameter error» из которого BingX
 # часто возвращает timestamp-проблемы; 109400 — задокументировано как

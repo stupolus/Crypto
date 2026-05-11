@@ -467,6 +467,15 @@ class ExchangeAdapter(Protocol):
 - ✅ Найдено и зафиксировано **3 новых квирка live BingX** (§7 п.27–29) расходящихся с docs-v3: WS-формат интервала = REST-форма; `maxLongLeverage` отсутствует в live `/contracts`; klines возвращаются DESC.
 - **Артефакт:** `await PublicAPI(client, cfg).get_klines("BTC-USDT", "15m", limit=...)` отдаёт типизированный `list[Kline]` ASC по времени, `BingXMarketWebSocket.subscribe("BTC-USDT@kline_1m")` отдаёт async-iterator data-фреймов с авто-реконнектом.
 
+### Фаза 0.E — Hardening (закрыта 2026-05-11)
+- ✅ `OrderJournal` (SQLite, stdlib): `pending → acked → filled/canceled/failed`. Идемпотентность через `client_order_id` PK. Async API через `asyncio.to_thread`. Восстановление кэша через `list_pending(symbol)` при старте процесса.
+- ✅ `UserStreamReconcileEvent` + reconcile в `BingXUserDataStream`: на каждом успешном (ре)коннекте — snapshot `balance + positions + open_orders` через REST, пушится **первым** событием в queue. Стратегия инициализирует/синкает state.
+- ✅ `MetricsWriter` (JSON-lines) + `compute_slippage_bps`: на каждый `place_order` адаптер пишет `latency_ms`, `slippage_bps`, статус ack в `ops/metrics.jsonl`. Baseline копится эмпирически.
+- ✅ Маскирование `signature` и `X-BX-APIKEY`: `mask_signed_url` / `mask_headers` в `client.py`. Готово к подключению при добавлении логов запросов.
+- ✅ Security review checklist пройден (см. retro/2026-05-11-фаза-0E.md): ключи только в `.env`, `.env` gitignored, IP whitelist у пользователя, `BINGX_ENV=vst` гейт.
+- ✅ 11 новых unit-тестов (journal CRUD + metrics serialization/slippage + masking). Общее покрытие сохранено ≥70%.
+- ✅ Integration на VST: reconcile-event приходит первым в стриме; journal-запись `pending → acked` подтверждена.
+
 ### Фаза 0.D part 2 — User-data stream + dead-man + compensating-close (закрыта 2026-05-11)
 - ✅ `PrivateAPI.create_listen_key` / `keep_alive_listen_key` / `close_listen_key` — listenKey CRUD (raw response, толерантность к пустому body).
 - ✅ `PrivateAPI.cancel_all_after(timeout_ms)` — реализован; на VST возвращает 404 (см. §7 п.37), integration пропускается с понятным skip-сообщением.
@@ -522,16 +531,20 @@ class ExchangeAdapter(Protocol):
 
 ## 13. Что СЕЙЧАС, в ближайшую сессию
 
-Фазы 0.A, 0.B, 0.C, 0.D part 1, **0.D part 2** закрыты. **Фаза 0 BingX-адаптера почти полностью готова.** Следующая сессия — фаза 0.E (hardening + метрики).
+Фазы 0.A, 0.B, 0.C, 0.D part 1, 0.D part 2, **0.E** закрыты. **BingX-адаптер технически готов к стратегии.**
 
-Конкретные задачи следующей сессии (фаза 0.E):
-1. Persistence ack-кэша (`client_order_id` → ack) в SQLite — защита от дублирования ордеров при рестарте процесса.
-2. Reconcile после reconnect: при возобновлении WS → `get_open_orders` + `get_positions` + `get_balance` + эмит синтетических sync-событий (`UserStreamReconcileEvent`). Стратегия должна толерантно обрабатывать как дубликаты, так и потерянные события.
-3. Метрики latency (place_order → ORDER_TRADE_UPDATE TRADE), slippage (ack.avgPrice vs ticker.last_price на момент отправки) — baseline в `ops/baseline-metrics.md`.
-4. Telegram-алерты на критичные события: `OrderRejected`, `AuthError`, `kill switch triggered`, `user-stream disconnect > N сек`.
-5. Security review адаптера (см. чек-лист §9.2): маскирование `signature`/`X-BX-APIKEY` в логах, проверка `.env` permissions, IP whitelist.
-6. Расширить ордерные типы: stop_market / stop_limit / tp_market как самостоятельные ордера (для случаев, когда нужен пост-фактум SL — например, после flip позиции).
-7. Финальная галочка фазы 0 в `plans/00` → переход к плану первой стратегии.
+**Следующая сессия — план первой стратегии (BTC breakout):**
+1. Создать `plans/08-стратегия-btc-breakout.md` — Donchian breakout 15m + ATR + volume + composite state. Spec в `plans/00` §«Стратегия №1».
+2. `core/risk/` — RiskEngine (формула размера позиции от 1% эквити, circuit breakers, лимиты).
+3. `core/signals/` — composite state engine (входной фильтр для стратегии).
+4. `strategies/btc_breakout/` — стратегия как класс, потребляющая `BingXUserDataStream` + `RiskEngine`.
+5. `core/backtest/` — backtester на исторических kline (BingX REST или загруженный parquet).
+6. План на 4 недели demo (VST) → ретроспектива → решение по live.
+
+**Параллельно, как только понадобится:**
+- Telegram-алерты (`OrderRejected`, `AuthError`, kill switch, user-stream disconnect > N сек) — отдельный план, в нём бот, токен, формат сообщений.
+- Standalone stop_market / stop_limit / tp_market (если стратегия захочет менять SL после flip).
+- Парсеры TG-скринеров / Hyperliquid (для фильтров стратегии, не триггеров — см. CLAUDE.md принцип №1).
 
 **Параллельно** (другая сессия / другой контекст) можно начать `plans/05-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
 
@@ -559,6 +572,18 @@ class ExchangeAdapter(Protocol):
 - `adapters/bingx/tests/`: 39 unit-тестов с respx + 4 integration-теста против live BingX. Покрытие 83.02%.
 - §7 пополнен 3 новыми квирками (п.27–29) на основе живых данных, расходящихся с docs.
 - §13 переключён на фазу 0.C (приватные read на VST). §11 фаза 0.B помечена закрытой.
+
+Сессия 2026-05-11 (фаза 0.E — hardening: persistence + reconcile + metrics + security):
+- `plans/07-фаза-0E.md` — план фазы.
+- `adapters/bingx/journal.py` — `OrderJournal` (SQLite, stdlib). Pending → acked / failed / filled. `client_order_id` PK. Async API через `asyncio.to_thread`.
+- `adapters/bingx/metrics.py` — `MetricsWriter` (JSON-lines) + `OrderMetric` + `compute_slippage_bps`. Latency (ack — start), slippage (avg vs mark price на момент отправки).
+- `adapters/bingx/private_models.py` + `UserStreamReconcileEvent`.
+- `adapters/bingx/user_stream.py` — после `_run_session` connect эмитит RECONCILE-event первым.
+- `adapters/bingx/client.py` — `mask_signed_url` / `mask_headers` helpers + `_SENSITIVE_QUERY_PARAMS`/`_SENSITIVE_HEADERS_CI` константы.
+- `adapters/bingx/private.py` — `PrivateAPI(client, journal=, metrics=)` опциональные. `place_order(req, request_mark_price=)` журналирует `pending → acked / failed`, считает latency + slippage.
+- 11 новых unit (journal CRUD + metrics + masking). Общее покрытие сохранено ≥70%.
+- Integration на VST: reconcile-event первым в стриме, journal `pending → acked` подтверждён.
+- §11 фаза 0.E помечена закрытой. §13 переключён на план первой стратегии (BTC breakout).
 
 Сессия 2026-05-11 (фаза 0.D part 2 — user-data stream + dead-man + compensating-close на VST):
 - `plans/06-фаза-0D-part2.md` — план фазы.
