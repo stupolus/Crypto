@@ -156,6 +156,10 @@ user_data_stream:
   reconnect_max_delay_s: 60.0
   reconnect_factor: 2.0
   watchdog_silence_s: 60                  # user-stream может молчать долго
+  # Periodic soft-reconcile: каждые N сек эмитим RECONCILE-event с
+  # REST-снимком, даже если WS не разрывался. Защита от «потеря push
+  # в полёте» (BingX баг / network glitch без disconnect).
+  soft_reconcile_interval_s: 0           # 0 = выключено. На live включить 60-180s.
 
 # ─── cancelAllAfter (0.D part 2) ─────────────────────────────────────────────
 # Биржевой dead-man (квирк §7 п.24). Если адаптер не сбросит таймер за окно,
