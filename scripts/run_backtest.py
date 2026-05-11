@@ -70,6 +70,14 @@ def main() -> None:
         default=Path("data/candles/btc-usdt-15m.jsonl"),
     )
     parser.add_argument(
+        "--symbol",
+        default=None,
+        help=(
+            "Переопределить symbol в config стратегии (по умолчанию — "
+            "из strategies/btc_breakout/config.yaml = BTC-USDT)"
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("ops"),
@@ -91,8 +99,13 @@ def main() -> None:
         span_days = (last - first) / 86_400_000
         print(f"  Range: {first} → {last} ({span_days:.1f} days)")
 
+    strategy_cfg = get_default_config()
+    if args.symbol is not None:
+        strategy_cfg = strategy_cfg.model_copy(update={"symbol": args.symbol})
+        print(f"  Symbol override: {strategy_cfg.symbol}")
+
     strategy = BtcBreakoutStrategy(
-        config=get_default_config(),
+        config=strategy_cfg,
         risk_engine=RiskEngine(),
     )
     backtest_cfg = load_config()
