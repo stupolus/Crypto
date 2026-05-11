@@ -44,9 +44,10 @@ def _ok_envelope(data: Any) -> dict[str, Any]:
 async def test_signed_request_includes_signature_apikey_and_recv_window(
     cfg: BingXConfig,
 ) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         balance_route = mock.get(cfg.rest_endpoints.balance).mock(
             return_value=httpx.Response(200, json=_ok_envelope([]))
@@ -75,9 +76,10 @@ async def test_signed_request_emits_params_in_alpha_sorted_order(
     порядке, в котором она пришла — не пересортируется. Поэтому params в URL
     должны быть в алфавитном порядке, и подпись добавляется последним.
     """
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         # Передаём «неотсортированные» бизнес-параметры, ожидаем sorted в URL.
         route = mock.post(cfg.rest_endpoints.set_margin_type).mock(
@@ -97,18 +99,17 @@ async def test_signed_request_emits_params_in_alpha_sorted_order(
     assert keys_in_url[-1] == "signature"
     # Бизнес-ключи + timestamp в алфавитном порядке.
     non_sig_keys = keys_in_url[:-1]
-    assert non_sig_keys == sorted(non_sig_keys), (
-        f"params must be alpha-sorted, got {non_sig_keys}"
-    )
+    assert non_sig_keys == sorted(non_sig_keys), f"params must be alpha-sorted, got {non_sig_keys}"
 
 
 @pytest.mark.asyncio
 async def test_signed_request_resyncs_on_timestamp_error_and_retries(
     cfg: BingXConfig,
 ) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         st_route = _stub_server_time(mock, cfg, server_ms=1_700_000_000_000)
         balance_route = mock.get(cfg.rest_endpoints.balance).mock(
             side_effect=[
@@ -127,9 +128,10 @@ async def test_signed_request_resyncs_on_timestamp_error_and_retries(
 
 @pytest.mark.asyncio
 async def test_signed_request_propagates_non_timestamp_api_errors(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         mock.get(cfg.rest_endpoints.balance).mock(
             return_value=httpx.Response(
@@ -144,9 +146,10 @@ async def test_signed_request_propagates_non_timestamp_api_errors(cfg: BingXConf
 @pytest.mark.asyncio
 async def test_signed_request_gives_up_on_repeated_timestamp_error(cfg: BingXConfig) -> None:
     """Если после resync ошибка повторилась — наверх, без бесконечного цикла."""
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         route = mock.get(cfg.rest_endpoints.balance).mock(
             return_value=httpx.Response(
@@ -212,9 +215,12 @@ async def test_explicit_keys_override_settings(cfg: BingXConfig) -> None:
         live_api_key="from-settings",
         live_api_secret="sec",
     )
-    async with BingXClient(
-        cfg, settings=settings, api_key="explicit", api_secret="explicit-sec"
-    ) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+    async with (
+        BingXClient(
+            cfg, settings=settings, api_key="explicit", api_secret="explicit-sec"
+        ) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
         _stub_server_time(mock, cfg)
         route = mock.get(cfg.rest_endpoints.balance).mock(
             return_value=httpx.Response(200, json=_ok_envelope([]))

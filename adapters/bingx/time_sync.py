@@ -64,9 +64,7 @@ class ServerTimeSyncer:
         async with self._lock:
             data = await self._client.request_public("GET", self._path)
             if not isinstance(data, dict) or "serverTime" not in data:
-                raise InvalidResponseError(
-                    f"server time response missing 'serverTime': {data!r}"
-                )
+                raise InvalidResponseError(f"server time response missing 'serverTime': {data!r}")
             server_ms = int(data["serverTime"])
             local_ms = int(time.time() * 1000)
             self._offset_ms = server_ms - local_ms

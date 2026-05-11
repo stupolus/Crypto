@@ -246,9 +246,7 @@ class BtcBreakoutStrategy:
         rank = percentile_rank(atrs, atr_now)
         return rank >= Decimal(str(self._cfg.atr_percentile_min))
 
-    def _volume_filter_passes(
-        self, current: Kline, closed: Sequence[Kline]
-    ) -> bool:
+    def _volume_filter_passes(self, current: Kline, closed: Sequence[Kline]) -> bool:
         window = closed[-self._cfg.volume_sma_window :]
         vol_sma = sma([c.volume for c in window], self._cfg.volume_sma_window)
         multiplier = Decimal(str(self._cfg.volume_multiplier))
@@ -268,9 +266,7 @@ class BtcBreakoutStrategy:
                 return False
         return True
 
-    def _compute_stop(
-        self, entry: Decimal, side: OrderSide, closed: Sequence[Kline]
-    ) -> Decimal:
+    def _compute_stop(self, entry: Decimal, side: OrderSide, closed: Sequence[Kline]) -> Decimal:
         """Стоп: low/high N свечей или min 0.5% от entry — что дальше."""
         window = closed[-self._cfg.donchian_n :]
         ref = min(c.low for c in window) if side == "BUY" else max(c.high for c in window)
@@ -282,9 +278,7 @@ class BtcBreakoutStrategy:
         candidate = max(ref, entry + min_distance)
         return max(candidate, entry + min_distance)
 
-    def _compute_tp1(
-        self, entry: Decimal, stop: Decimal, side: OrderSide
-    ) -> Decimal:
+    def _compute_tp1(self, entry: Decimal, stop: Decimal, side: OrderSide) -> Decimal:
         distance = abs(entry - stop)
         r = Decimal(str(self._cfg.tp1_r_multiple))
         if side == "BUY":

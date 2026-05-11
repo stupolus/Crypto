@@ -50,9 +50,7 @@ def load_config(path: Path | None = None) -> TrendEmaConfig:
     except yaml.YAMLError as e:
         raise TrendEmaConfigError(f"YAML parse error: {e}") from e
     if not isinstance(raw, dict):
-        raise TrendEmaConfigError(
-            f"config root must be mapping, got {type(raw).__name__}"
-        )
+        raise TrendEmaConfigError(f"config root must be mapping, got {type(raw).__name__}")
     try:
         return TrendEmaConfig.model_validate(raw)
     except ValidationError as e:

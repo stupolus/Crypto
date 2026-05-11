@@ -40,13 +40,10 @@ class UsSessionConfig(_StrictModel):
     def _check_hours(self) -> UsSessionConfig:
         if self.asian_end_hour_utc != self.us_start_hour_utc:
             raise ValueError(
-                "asian_end_hour_utc must equal us_start_hour_utc "
-                "(continuous transition)"
+                "asian_end_hour_utc must equal us_start_hour_utc (continuous transition)"
             )
         if self.us_end_hour_utc <= self.us_start_hour_utc:
-            raise ValueError(
-                "us_end_hour_utc must be > us_start_hour_utc"
-            )
+            raise ValueError("us_end_hour_utc must be > us_start_hour_utc")
         if self.min_range_pct >= self.max_range_pct:
             raise ValueError("min_range_pct must be < max_range_pct")
         return self
@@ -65,9 +62,7 @@ def load_config(path: Path | None = None) -> UsSessionConfig:
     except yaml.YAMLError as e:
         raise UsSessionConfigError(f"config YAML parse error: {e}") from e
     if not isinstance(raw, dict):
-        raise UsSessionConfigError(
-            f"config root must be mapping, got {type(raw).__name__}"
-        )
+        raise UsSessionConfigError(f"config root must be mapping, got {type(raw).__name__}")
     try:
         return UsSessionConfig.model_validate(raw)
     except ValidationError as e:

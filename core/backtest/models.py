@@ -37,8 +37,8 @@ class Trade:
 
     entry: FillEvent
     exits: tuple[FillEvent, ...]
-    pnl: Decimal           # USDT, с учётом fees
-    pnl_pct: Decimal       # относительно entry notional
+    pnl: Decimal  # USDT, с учётом fees
+    pnl_pct: Decimal  # относительно entry notional
     duration_ms: int
     max_favorable_excursion_pct: Decimal
     max_adverse_excursion_pct: Decimal
@@ -57,7 +57,7 @@ class OpenPosition:
     """Текущая открытая позиция (для view стратегии)."""
 
     entry_price: Decimal
-    quantity: Decimal           # > 0 для LONG, < 0 для SHORT
+    quantity: Decimal  # > 0 для LONG, < 0 для SHORT
     side: OrderSide
     stop_price: Decimal
     take_profit_price: Decimal | None
@@ -69,7 +69,7 @@ class StrategyContext:
     """Read-only view стратегии. Никаких setters — стратегия не мутирует state."""
 
     current_candle: Kline
-    history: Sequence[Kline]      # все закрытые свечи до и включая current
+    history: Sequence[Kline]  # все закрытые свечи до и включая current
     equity: Decimal
     open_position: OpenPosition | None
 
@@ -111,7 +111,7 @@ class BacktestResult:
     """Полный результат прогона."""
 
     trades: tuple[Trade, ...]
-    equity_curve: tuple[tuple[int, Decimal], ...]   # (ts_ms, equity) после каждого fill
+    equity_curve: tuple[tuple[int, Decimal], ...]  # (ts_ms, equity) после каждого fill
     summary: BacktestSummary
 
 

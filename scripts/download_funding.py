@@ -38,9 +38,7 @@ async def download(symbol: str, limit: int, out_path: Path) -> None:
         if isinstance(data, dict) and "data" in data:
             data = data["data"]
         if not isinstance(data, list):
-            raise SystemExit(
-                f"unexpected funding response shape: {type(data).__name__}"
-            )
+            raise SystemExit(f"unexpected funding response shape: {type(data).__name__}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Sort ASC by fundingTime для удобства time-series.

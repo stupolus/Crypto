@@ -529,9 +529,7 @@ def test_order_request_rejects_market_with_price() -> None:
 
 @pytest.mark.asyncio
 async def test_cancel_order_requires_id_or_client_id(cfg: BingXConfig) -> None:
-    async with BingXClient(
-        cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET
-    ) as client:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
         api = PrivateAPI(client)
         with pytest.raises(ValueError, match="order_id or client_order_id"):
             await api.cancel_order("BTC-USDT")
@@ -862,9 +860,7 @@ def test_parse_user_stream_event_account_update() -> None:
         "e": "ACCOUNT_UPDATE",
         "E": 1_700_000_001_000,
         "a": {
-            "B": [
-                {"a": "VST", "wb": "99999.5", "cw": "99999.5", "bc": "-0.5"}
-            ],
+            "B": [{"a": "VST", "wb": "99999.5", "cw": "99999.5", "bc": "-0.5"}],
             "P": [
                 {
                     "s": "BTC-USDT",

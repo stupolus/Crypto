@@ -274,9 +274,7 @@ class OrderUpdateEvent(_StrictModel):
     commission_asset: str | None = None
     realised_profit: Decimal | None = None
     reduce_only: bool | None = None
-    execution_type: Literal[
-        "NEW", "CANCELED", "CALCULATED", "EXPIRED", "TRADE", "AMENDMENT"
-    ]
+    execution_type: Literal["NEW", "CANCELED", "CALCULATED", "EXPIRED", "TRADE", "AMENDMENT"]
 
     @field_validator("order_id", mode="before")
     @classmethod
@@ -445,9 +443,7 @@ class OrderRequest(_StrictModel):
         if v is None:
             return v
         if not (1 <= len(v) <= 40):
-            raise ValueError(
-                f"client_order_id length must be 1..40 chars, got {len(v)}"
-            )
+            raise ValueError(f"client_order_id length must be 1..40 chars, got {len(v)}")
         return v
 
     @model_validator(mode="after")

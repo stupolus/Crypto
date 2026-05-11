@@ -78,10 +78,15 @@ async def run_single(
 ) -> str:
     """Запустить один прогон через subprocess."""
     cmd = [
-        ".venv/bin/python", "-m", "scripts.run_backtest",
-        "--strategy", strategy,
-        "--symbol", symbol,
-        "--candles", str(candles),
+        ".venv/bin/python",
+        "-m",
+        "scripts.run_backtest",
+        "--strategy",
+        strategy,
+        "--symbol",
+        symbol,
+        "--candles",
+        str(candles),
     ]
     if strategy_config is not None:
         cmd += ["--strategy-config", str(strategy_config)]
@@ -99,9 +104,7 @@ async def run_single(
     )
     stdout, stderr = await result.communicate()
     if result.returncode != 0:
-        raise SystemExit(
-            f"run_backtest failed for {symbol}:\n{stderr.decode()[:500]}"
-        )
+        raise SystemExit(f"run_backtest failed for {symbol}:\n{stderr.decode()[:500]}")
     return stdout.decode()
 
 
@@ -122,10 +125,7 @@ async def main_async(args: argparse.Namespace) -> None:
     symbols = [s.strip() for s in args.symbols.split(",")]
     rows: list[RunSummary] = []
     for sym in symbols:
-        candles = (
-            args.candles_template
-            or Path(f"data/candles/{sym.lower()}-{args.interval}.jsonl")
-        )
+        candles = args.candles_template or Path(f"data/candles/{sym.lower()}-{args.interval}.jsonl")
         print(f"\n=== Running {sym} ===")
         out = await run_single(
             args.strategy,

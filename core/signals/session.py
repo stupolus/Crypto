@@ -24,9 +24,7 @@ def utc_day_of_epoch(timestamp_ms: int) -> int:
     return timestamp_ms // _MS_PER_DAY
 
 
-def is_in_window(
-    timestamp_ms: int, start_hour_utc: int, end_hour_utc: int
-) -> bool:
+def is_in_window(timestamp_ms: int, start_hour_utc: int, end_hour_utc: int) -> bool:
     """Проверка, попадает ли ts в окно ``[start_hour, end_hour)`` UTC.
 
     Окно полуоткрытое: start включается, end исключается. ``end < start``

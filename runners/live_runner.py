@@ -107,13 +107,9 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
     if name == "btc_breakout":
         return BtcBreakoutStrategy(config=get_default_config(), risk_engine=risk_engine)
     if name == "us_session_breakout":
-        return UsSessionBreakoutStrategy(
-            config=us_get_default_config(), risk_engine=risk_engine
-        )
+        return UsSessionBreakoutStrategy(config=us_get_default_config(), risk_engine=risk_engine)
     if name == "trend_ema_4h":
-        return TrendEmaStrategy(
-            config=trend_get_default_config(), risk_engine=risk_engine
-        )
+        return TrendEmaStrategy(config=trend_get_default_config(), risk_engine=risk_engine)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -147,12 +143,8 @@ async def _warm_history(
     public_api: PublicAPI, symbol: str, interval: str, count: int
 ) -> list[Kline]:
     """Подтянуть последние N свечей через REST до старта WS-подписки."""
-    candles = await public_api.get_klines(
-        symbol=symbol, interval=interval, limit=count
-    )
-    logger.info(
-        "warmed history: %d candles for %s %s", len(candles), symbol, interval
-    )
+    candles = await public_api.get_klines(symbol=symbol, interval=interval, limit=count)
+    logger.info("warmed history: %d candles for %s %s", len(candles), symbol, interval)
     return candles
 
 
@@ -173,8 +165,7 @@ async def run(args: argparse.Namespace) -> None:
     settings = BingXSettings()
     if settings.env == "live":
         raise SystemExit(
-            "Refusing to run on live without --i-know-what-im-doing. "
-            "Set BINGX_ENV=vst in .env."
+            "Refusing to run on live without --i-know-what-im-doing. Set BINGX_ENV=vst in .env."
         )
     journal_path = Path(args.journal_db)
     metrics_path = Path(args.metrics_file)
@@ -428,12 +419,8 @@ def main() -> None:
         action="store_true",
         help="Только логировать сигналы, не отправлять ордера",
     )
-    parser.add_argument(
-        "--journal-db", default="ops/live-orders.sqlite"
-    )
-    parser.add_argument(
-        "--metrics-file", default="ops/live-metrics.jsonl"
-    )
+    parser.add_argument("--journal-db", default="ops/live-orders.sqlite")
+    parser.add_argument("--metrics-file", default="ops/live-metrics.jsonl")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 

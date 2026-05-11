@@ -66,9 +66,7 @@ class TrendEmaStrategy:
         prev_ema_fast = ema(prev_closes, self._cfg.ema_fast)
 
         spread_pct = (
-            abs(ema_fast - ema_slow) / ema_slow * _HUNDRED
-            if ema_slow > 0
-            else Decimal("0")
+            abs(ema_fast - ema_slow) / ema_slow * _HUNDRED if ema_slow > 0 else Decimal("0")
         )
         if spread_pct < Decimal(str(self._cfg.min_ema_spread_pct)):
             return None
@@ -113,9 +111,7 @@ class TrendEmaStrategy:
         )
         decision = self._risk.evaluate(inputs)
         if isinstance(decision, RiskRejection):
-            logger.info(
-                "trend_ema rejected: %s (%s)", decision.code, decision.reason
-            )
+            logger.info("trend_ema rejected: %s (%s)", decision.code, decision.reason)
             return None
         assert isinstance(decision, RiskApproval)
 

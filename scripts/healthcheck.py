@@ -58,15 +58,11 @@ async def check(symbol: str) -> int:
         # 3. Signed REST: balance.
         try:
             balances = await private_api.get_balance()
-            balance_summary = ", ".join(
-                f"{b.asset}={b.balance}" for b in balances[:3]
-            )
+            balance_summary = ", ".join(f"{b.asset}={b.balance}" for b in balances[:3])
             print(f"✅ Signed REST: balance = {balance_summary or '(empty)'}")
             for b in balances:
                 if b.asset in ("VST", "USDT") and b.balance <= Decimal("0"):
-                    print(
-                        f"⚠️  {b.asset} balance is 0 — пополни через BingX UI"
-                    )
+                    print(f"⚠️  {b.asset} balance is 0 — пополни через BingX UI")
         except Exception as exc:
             failures.append(f"signed REST: {exc}")
             print(f"❌ Signed REST balance: {exc}", file=sys.stderr)
@@ -88,15 +84,11 @@ async def check(symbol: str) -> int:
             # margin type — ловим первую попавшуюся позицию (или просто факт что
             # endpoint работает).
             if positions:
-                margin_types = {
-                    p.margin_type for p in positions if p.margin_type
-                }
+                margin_types = {p.margin_type for p in positions if p.margin_type}
                 if margin_types == {"ISOLATED"}:
                     print("✅ Margin type = ISOLATED (как требуется)")
                 elif margin_types:
-                    print(
-                        f"⚠️  Margin types in use: {margin_types} — должен быть ISOLATED"
-                    )
+                    print(f"⚠️  Margin types in use: {margin_types} — должен быть ISOLATED")
         except Exception as exc:
             failures.append(f"positions: {exc}")
             print(f"❌ Positions check: {exc}", file=sys.stderr)

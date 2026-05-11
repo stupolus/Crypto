@@ -49,21 +49,13 @@ def compute_summary(
     total = Decimal(len(trades))
     win_rate = (Decimal(len(wins)) / total) * _HUNDRED
 
-    avg_win_pct = (
-        sum((t.pnl_pct for t in wins), _ZERO) / Decimal(len(wins))
-        if wins
-        else _ZERO
-    )
+    avg_win_pct = sum((t.pnl_pct for t in wins), _ZERO) / Decimal(len(wins)) if wins else _ZERO
     avg_loss_pct = (
-        sum((t.pnl_pct for t in losses), _ZERO) / Decimal(len(losses))
-        if losses
-        else _ZERO
+        sum((t.pnl_pct for t in losses), _ZERO) / Decimal(len(losses)) if losses else _ZERO
     )
     gross_win = sum((t.pnl for t in wins), _ZERO)
     gross_loss_abs = -sum((t.pnl for t in losses), _ZERO)
-    profit_factor = (
-        gross_win / gross_loss_abs if gross_loss_abs > 0 else _ZERO
-    )
+    profit_factor = gross_win / gross_loss_abs if gross_loss_abs > 0 else _ZERO
 
     # Sharpe: returns per trade (pnl_pct в долях).
     returns = [t.pnl_pct / _HUNDRED for t in trades]
@@ -75,16 +67,16 @@ def compute_summary(
     else:
         # Аннуализация: предполагаем равномерное распределение сделок по
         # времени. avg_trade_minutes на сделку → N сделок в год.
-        avg_duration_min = sum(
-            (Decimal(t.duration_ms) / Decimal(60_000) for t in trades), _ZERO
-        ) / total
+        avg_duration_min = (
+            sum((Decimal(t.duration_ms) / Decimal(60_000) for t in trades), _ZERO) / total
+        )
         # Минимум 1 минута, чтобы не делить на 0.
         avg_duration_min = max(avg_duration_min, Decimal("1"))
         trades_per_year = Decimal(365 * 24 * 60) / avg_duration_min
         sharpe = (mean / stdev) * _decimal_sqrt(trades_per_year)
-    avg_duration_min = sum(
-        (Decimal(t.duration_ms) / Decimal(60_000) for t in trades), _ZERO
-    ) / total
+    avg_duration_min = (
+        sum((Decimal(t.duration_ms) / Decimal(60_000) for t in trades), _ZERO) / total
+    )
 
     # Max drawdown по equity_curve.
     max_dd = _ZERO
@@ -99,9 +91,7 @@ def compute_summary(
 
     final_equity = equity_curve[-1][1] if equity_curve else initial_equity
     total_pnl_pct = (
-        (final_equity - initial_equity) / initial_equity * _HUNDRED
-        if initial_equity > 0
-        else _ZERO
+        (final_equity - initial_equity) / initial_equity * _HUNDRED if initial_equity > 0 else _ZERO
     )
 
     return BacktestSummary(

@@ -66,14 +66,8 @@ class _TradeBuilder:
         for ex in self.exits:
             pnl += self.side_sign * (ex.price - self.entry.price) * ex.quantity
             pnl -= ex.fee
-        pnl_pct = (
-            pnl / entry_notional * _HUNDRED if entry_notional > 0 else _ZERO
-        )
-        duration_ms = (
-            self.exits[-1].timestamp_ms - self.entry.timestamp_ms
-            if self.exits
-            else 0
-        )
+        pnl_pct = pnl / entry_notional * _HUNDRED if entry_notional > 0 else _ZERO
+        duration_ms = self.exits[-1].timestamp_ms - self.entry.timestamp_ms if self.exits else 0
         return Trade(
             entry=self.entry,
             exits=tuple(self.exits),
@@ -141,7 +135,11 @@ class BacktestEngine:
                 builder.update_excursion(candle.high, candle.low)
                 exit_fill = self._check_attached_exits(open_pos, candle)
                 if exit_fill is not None:
-                    equity += builder.side_sign * (exit_fill.price - open_pos.entry_price) * exit_fill.quantity
+                    equity += (
+                        builder.side_sign
+                        * (exit_fill.price - open_pos.entry_price)
+                        * exit_fill.quantity
+                    )
                     equity -= exit_fill.fee
                     equity_curve.append((exit_fill.timestamp_ms, equity))
                     strategy.on_fill(exit_fill)
@@ -177,15 +175,15 @@ class BacktestEngine:
                 time_ms=last_candle.open_time_ms,
                 reason="MANUAL_CLOSE",
             )
-            equity += builder.side_sign * (close_fill.price - open_pos.entry_price) * close_fill.quantity
+            equity += (
+                builder.side_sign * (close_fill.price - open_pos.entry_price) * close_fill.quantity
+            )
             equity -= close_fill.fee
             equity_curve.append((close_fill.timestamp_ms, equity))
             builder.exits.append(close_fill)
             trades.append(builder.finalize())
 
-        summary = compute_summary(
-            trades, equity_curve, self._config.initial_equity_decimal
-        )
+        summary = compute_summary(trades, equity_curve, self._config.initial_equity_decimal)
         return BacktestResult(
             trades=tuple(trades),
             equity_curve=tuple(equity_curve),
@@ -243,9 +241,7 @@ class BacktestEngine:
             reason=reason,
         )
 
-    def _check_attached_exits(
-        self, position: OpenPosition, candle: Kline
-    ) -> FillEvent | None:
+    def _check_attached_exits(self, position: OpenPosition, candle: Kline) -> FillEvent | None:
         """Проверить SL/TP на high/low свечи.
 
         Приоритет SL над TP при касании обоих в одной свече (worst case).
@@ -253,9 +249,8 @@ class BacktestEngine:
         """
         is_long = position.side == "BUY"
         # Stop loss
-        sl_hit = (
-            (is_long and candle.low <= position.stop_price)
-            or (not is_long and candle.high >= position.stop_price)
+        sl_hit = (is_long and candle.low <= position.stop_price) or (
+            not is_long and candle.high >= position.stop_price
         )
         # Take profit (опц.)
         tp_hit = position.take_profit_price is not None and (
@@ -280,9 +275,7 @@ class BacktestEngine:
         return None
 
     @staticmethod
-    def _open_position_from_request(
-        request: OrderRequest, fill: FillEvent
-    ) -> OpenPosition:
+    def _open_position_from_request(request: OrderRequest, fill: FillEvent) -> OpenPosition:
         assert request.attached_stop_loss is not None, (
             "OrderRequest invariant: entry must have attached_stop_loss"
         )

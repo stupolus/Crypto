@@ -35,9 +35,7 @@ def _make_ack(status: str = "NEW") -> OrderAck:
             "origQty": "0.001",
             "executedQty": "0",
             "avgPrice": "62000",
-            "stopLoss": (
-                '{"type":"STOP_MARKET","stopPrice":60000,"workingType":"MARK_PRICE"}'
-            ),
+            "stopLoss": ('{"type":"STOP_MARKET","stopPrice":60000,"workingType":"MARK_PRICE"}'),
             "takeProfit": "",
             "time": 1_700_000_000_000,
             "updateTime": 1_700_000_000_500,

@@ -146,8 +146,8 @@ def test_market_entry_uses_next_candle_open_with_slippage(cfg: BacktestConfig) -
     engine = BacktestEngine(cfg)
     candles = [
         _kline(0, "60000", "60010", "59990", "60000"),
-        _kline(60_000, "60000", "60010", "59990", "60000"),    # signal closes here
-        _kline(120_000, "60500", "60600", "59900", "60100"),   # entry @ open=60500 + slip
+        _kline(60_000, "60000", "60010", "59990", "60000"),  # signal closes here
+        _kline(120_000, "60500", "60600", "59900", "60100"),  # entry @ open=60500 + slip
     ]
     strategy = _OneShotLongStrategy()
     result = engine.run(strategy, candles)
@@ -169,7 +169,9 @@ def test_lookahead_independence_future_changes_do_not_affect_past(
         _kline(180_000, "60800", "60900", "60700", "60750"),  # после exit
     ]
     altered_candles = list(base_candles)
-    altered_candles[3] = _kline(180_000, "60800", "90000", "60700", "85000")  # бредовая свеча после exit
+    altered_candles[3] = _kline(
+        180_000, "60800", "90000", "60700", "85000"
+    )  # бредовая свеча после exit
 
     r1 = engine.run(_OneShotLongStrategy(), base_candles)
     r2 = engine.run(_OneShotLongStrategy(), altered_candles)
@@ -265,10 +267,10 @@ def test_summary_drawdown_calculation(cfg: BacktestConfig) -> None:
 
     engine = BacktestEngine(cfg)
     candles = [
-        _kline(0, "60000", "60010", "59990", "60000"),       # signal #1
+        _kline(0, "60000", "60010", "59990", "60000"),  # signal #1
         _kline(60_000, "60000", "60010", "59000", "59100"),  # entry #1 + SL hit (loss)
-        _kline(120_000, "59100", "59200", "59000", "59100"), # signal #2
-        _kline(180_000, "59100", "60000", "59000", "59950"), # entry #2 + TP hit
+        _kline(120_000, "59100", "59200", "59000", "59100"),  # signal #2
+        _kline(180_000, "59100", "60000", "59000", "59950"),  # entry #2 + TP hit
     ]
     result = engine.run(_LossThenWin(), candles)
     # Допускаем, что после loss произошла просадка > 0.

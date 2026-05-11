@@ -133,18 +133,14 @@ def main() -> None:
         default=None,
         help="Override output path (default: data/candles/<symbol>-<interval>.jsonl)",
     )
-    parser.add_argument(
-        "--log-level", default="INFO", help="DEBUG / INFO / WARNING"
-    )
+    parser.add_argument("--log-level", default="INFO", help="DEBUG / INFO / WARNING")
     args = parser.parse_args()
 
     logging.basicConfig(
         level=args.log_level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    out = args.output or Path(
-        f"data/candles/{args.symbol.lower()}-{args.interval}.jsonl"
-    )
+    out = args.output or Path(f"data/candles/{args.symbol.lower()}-{args.interval}.jsonl")
     asyncio.run(download(args.symbol, args.interval, args.months, out))
 
 

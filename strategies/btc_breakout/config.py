@@ -54,9 +54,7 @@ def load_config(path: Path | None = None) -> StrategyConfig:
     except yaml.YAMLError as e:
         raise StrategyConfigError(f"strategy YAML parse error: {e}") from e
     if not isinstance(raw, dict):
-        raise StrategyConfigError(
-            f"strategy config root must be mapping, got {type(raw).__name__}"
-        )
+        raise StrategyConfigError(f"strategy config root must be mapping, got {type(raw).__name__}")
     try:
         return StrategyConfig.model_validate(raw)
     except ValidationError as e:

@@ -104,26 +104,18 @@ class UsSessionBreakoutStrategy:
             return None
 
         # 2. Asian range accumulation.
-        if is_in_window(
-            ts, self._cfg.asian_start_hour_utc, self._cfg.asian_end_hour_utc
-        ):
+        if is_in_window(ts, self._cfg.asian_start_hour_utc, self._cfg.asian_end_hour_utc):
             self._state = _State.ACCUMULATING_RANGE
             self._asian_high = (
-                candle.high
-                if self._asian_high is None
-                else max(self._asian_high, candle.high)
+                candle.high if self._asian_high is None else max(self._asian_high, candle.high)
             )
             self._asian_low = (
-                candle.low
-                if self._asian_low is None
-                else min(self._asian_low, candle.low)
+                candle.low if self._asian_low is None else min(self._asian_low, candle.low)
             )
             return None
 
         # 3. US window — ловим пробой.
-        if is_in_window(
-            ts, self._cfg.us_start_hour_utc, self._cfg.us_end_hour_utc
-        ):
+        if is_in_window(ts, self._cfg.us_start_hour_utc, self._cfg.us_end_hour_utc):
             if self._state == _State.DAY_DONE or self._signaled_today:
                 return None
             if self._asian_high is None or self._asian_low is None:
@@ -167,9 +159,7 @@ class UsSessionBreakoutStrategy:
         midpoint = (self._asian_high + self._asian_low) / Decimal("2")
         if midpoint <= 0:
             return None
-        range_pct = (
-            (self._asian_high - self._asian_low) / midpoint * _HUNDRED
-        )
+        range_pct = (self._asian_high - self._asian_low) / midpoint * _HUNDRED
         if range_pct < Decimal(str(self._cfg.min_range_pct)):
             self._state = _State.DAY_DONE
             return None
@@ -190,9 +180,7 @@ class UsSessionBreakoutStrategy:
             return None  # ждём пробоя
 
         # Минимальная stop_distance проверка.
-        stop_distance_pct = (
-            abs(entry - stop) / entry * _HUNDRED
-        )
+        stop_distance_pct = abs(entry - stop) / entry * _HUNDRED
         if stop_distance_pct < Decimal(str(self._cfg.stop_min_pct)):
             return None
 

@@ -118,9 +118,7 @@ def test_pydantic_rejects_zero_equity() -> None:
 
 def test_reject_stop_too_tight(engine: RiskEngine) -> None:
     """Стоп 0.3% < 0.5% min → STOP_TOO_TIGHT."""
-    decision = engine.evaluate(
-        _base_inputs(entry=Decimal("60000"), stop=Decimal("59820"))
-    )
+    decision = engine.evaluate(_base_inputs(entry=Decimal("60000"), stop=Decimal("59820")))
     assert isinstance(decision, RiskRejection)
     assert decision.code == RejectionCode.STOP_TOO_TIGHT
 
@@ -200,18 +198,14 @@ def test_reject_leverage_over_cap(engine: RiskEngine) -> None:
 def test_reject_liquidation_too_close_long(engine: RiskEngine) -> None:
     """LONG: liquidation в 10% за стопом при стопе 1% — buffer < 30%."""
     # entry=60000, stop=59400 (-1%), liq=59300 → buffer=100, требуется 180.
-    decision = engine.evaluate(
-        _base_inputs(liquidation_price=Decimal("59300"))
-    )
+    decision = engine.evaluate(_base_inputs(liquidation_price=Decimal("59300")))
     assert isinstance(decision, RiskRejection)
     assert decision.code == RejectionCode.LIQUIDATION_TOO_CLOSE
 
 
 def test_approval_with_sufficient_liquidation_buffer(engine: RiskEngine) -> None:
     """LONG: liquidation в 50% за стопом — buffer ≫ 30%."""
-    decision = engine.evaluate(
-        _base_inputs(liquidation_price=Decimal("59100"))
-    )
+    decision = engine.evaluate(_base_inputs(liquidation_price=Decimal("59100")))
     assert isinstance(decision, RiskApproval)
 
 
