@@ -1,9 +1,11 @@
 """BingX-адаптер (USDT-M perpetual).
 
-Публичный API фазы 0.B: загрузка конфига, базовый HTTP-клиент и
-типизированные публичные REST-методы, плюс WS-каркас на market data.
+Публичный API:
+- Фаза 0.B: конфиг, базовый HTTP-клиент, публичные REST, WS-каркас (market).
+- Фаза 0.C: pydantic-settings для ключей, приватные read + setters,
+  server-time sync.
 
-Приватные эндпоинты (баланс, позиции, ордера) — фаза 0.C/0.D, см.
+Размещение/отмена ордеров и kill switch — фаза 0.D, см.
 ``plans/01-bingx-адаптер.md`` §11.
 """
 
@@ -20,22 +22,43 @@ from adapters.bingx.exceptions import (
     ServerError,
     WebSocketError,
 )
-from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
+from adapters.bingx.models import (
+    AssetBalance,
+    Contract,
+    Fill,
+    Kline,
+    LeverageInfo,
+    OpenOrder,
+    Position,
+    PositionMode,
+    ServerTime,
+    Ticker,
+)
+from adapters.bingx.private import PrivateAPI
 from adapters.bingx.public import PublicAPI
+from adapters.bingx.settings import BingXSettings, load_settings
 from adapters.bingx.websocket import BingXMarketWebSocket
 
 __all__ = [
     "APIError",
+    "AssetBalance",
     "AuthError",
     "BingXClient",
     "BingXConfig",
     "BingXError",
     "BingXMarketWebSocket",
+    "BingXSettings",
     "ConfigError",
     "Contract",
+    "Fill",
     "InvalidResponseError",
     "Kline",
+    "LeverageInfo",
     "NetworkError",
+    "OpenOrder",
+    "Position",
+    "PositionMode",
+    "PrivateAPI",
     "PublicAPI",
     "RateLimited",
     "ServerError",
@@ -44,5 +67,6 @@ __all__ = [
     "WebSocketError",
     "get_default_config",
     "load_config",
+    "load_settings",
     "sign_query",
 ]

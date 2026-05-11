@@ -127,6 +127,18 @@ class BingXClient:
         self._market_bucket = _TokenBucket(
             capacity=bucket_cfg.capacity, window_s=bucket_cfg.window_s
         )
+        # ── server-time offset ──
+        # ``request_signed`` использует ``serverTime + offset_ms`` как timestamp.
+        # Без синка offset=0, что означает «верь локальным часам» — допустимо
+        # на машинах с NTP, но мы делаем синк перед первым подписанным вызовом
+        # и потом не чаще чем раз в ``server_time_resync_interval_s``.
+        self._server_time_offset_ms: int = 0
+        # ``time.monotonic()`` момента последней синхронизации.
+        # ``None`` = ни разу не синхронизировались.
+        self._last_server_time_sync: float | None = None
+        # Лок предотвращает гонку при одновременных приватных вызовах:
+        # только один таск делает запрос server/time.
+        self._server_time_lock = asyncio.Lock()
 
     # ── Контекст-менеджер ──────────────────────────────────────────────────
     async def __aenter__(self) -> Self:
@@ -165,23 +177,75 @@ class BingXClient:
         *,
         params: Mapping[str, Any] | None = None,
     ) -> Any:
-        """Приватный (подписанный) запрос — заготовка для фазы 0.C.
+        """Приватный (подписанный) запрос с HMAC-SHA256.
 
-        В фазе 0.B вызовов нет; реализован, чтобы зафиксировать схему
-        подписи и не разбрасывать её в момент включения приватного API.
+        Алгоритм (квирк §7 п.18 plans/01):
+        1. Если синк часов протух (или ни разу не делался) — запрашиваем
+           ``GET /server/time``, обновляем offset.
+        2. К пользовательским ``params`` добавляем ``timestamp = now_ms + offset``
+           и ``recvWindow``. Подпись считается по этим параметрам, ASCII-сортированным,
+           без URL-encoding.
+        3. ``signature`` добавляется к параметрам **после** расчёта подписи.
+        4. Header ``X-BX-APIKEY: <api_key>``.
+
+        Поднимает ``AuthError`` если ключи не заданы (фаза 0.C+ обязательны).
         """
         if not self._api_key or not self._api_secret:
             raise AuthError(
                 "request_signed requires api_key/api_secret; "
-                "phase 0.B works only with public endpoints"
+                "BingXClient created in public-only mode"
             )
+        await self._ensure_server_time_synced()
         merged: dict[str, Any] = dict(params or {})
-        merged["timestamp"] = int(time.time() * 1000)
+        merged["timestamp"] = self.now_ms()
         merged["recvWindow"] = self._config.signing.recv_window_ms
         merged["signature"] = sign_query(merged, self._api_secret)
         await self._market_bucket.acquire()
         headers = {self._config.signing.api_key_header: self._api_key}
         return await self._send_with_retry(method, path, params=merged, headers=headers)
+
+    # ── Серверное время / синхронизация ────────────────────────────────────
+    def now_ms(self) -> int:
+        """Локальное время в мс с поправкой на разницу с биржей.
+
+        В подписи BingX требует, чтобы ``|timestamp - serverTime| <= recvWindow``
+        (квирк §7 п.19 plans/01, default 5 с). На машинах с дрейфом NTP без
+        offset может реджектить ``code=109414 "expired"``.
+        """
+        return int(time.time() * 1000) + self._server_time_offset_ms
+
+    async def sync_server_time(self) -> int:
+        """Принудительный синк часов с BingX.
+
+        Дёргает ``GET /server/time``, считает разницу между сервером
+        и локальным временем, сохраняет в ``_server_time_offset_ms``.
+
+        Возвращает новый offset в мс (>0 — биржа впереди, <0 — позади).
+        """
+        async with self._server_time_lock:
+            local_before = int(time.time() * 1000)
+            payload = await self._send_with_retry(
+                "GET", self._config.rest_endpoints.server_time
+            )
+            local_after = int(time.time() * 1000)
+            if not isinstance(payload, Mapping) or "serverTime" not in payload:
+                raise InvalidResponseError(
+                    f"server/time payload missing 'serverTime': {payload!r}"
+                )
+            server_ms = int(payload["serverTime"])
+            # Поправка на RTT: считаем, что биржа отдала свой serverTime
+            # в середине окна (грубое допущение, но достаточно для 5-сек recvWindow).
+            local_mid = (local_before + local_after) // 2
+            self._server_time_offset_ms = server_ms - local_mid
+            self._last_server_time_sync = time.monotonic()
+            return self._server_time_offset_ms
+
+    async def _ensure_server_time_synced(self) -> None:
+        """Re-sync если прошло > ``server_time_resync_interval_s`` с прошлого."""
+        interval = self._config.signing.server_time_resync_interval_s
+        last = self._last_server_time_sync
+        if last is None or (time.monotonic() - last) >= interval:
+            await self.sync_server_time()
 
     # ── Внутренности ───────────────────────────────────────────────────────
     async def _send_with_retry(

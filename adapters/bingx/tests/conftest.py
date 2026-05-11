@@ -51,3 +51,38 @@ def klines_payload() -> dict[str, Any]:
 @pytest.fixture
 def rate_limit_payload() -> dict[str, Any]:
     return _load_fixture("error_rate_limit.json")
+
+
+@pytest.fixture
+def balance_payload() -> dict[str, Any]:
+    return _load_fixture("balance.json")
+
+
+@pytest.fixture
+def positions_payload() -> dict[str, Any]:
+    return _load_fixture("positions.json")
+
+
+@pytest.fixture
+def open_orders_payload() -> dict[str, Any]:
+    return _load_fixture("open_orders.json")
+
+
+@pytest.fixture
+def fills_payload() -> dict[str, Any]:
+    return _load_fixture("fills.json")
+
+
+@pytest.fixture
+def leverage_payload() -> dict[str, Any]:
+    return _load_fixture("leverage_response.json")
+
+
+@pytest.fixture
+def position_mode_payload() -> dict[str, Any]:
+    return _load_fixture("position_mode.json")
+
+
+@pytest.fixture
+def margin_type_payload() -> dict[str, Any]:
+    return _load_fixture("margin_type.json")

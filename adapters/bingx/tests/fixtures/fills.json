@@ -1,0 +1,22 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": {
+    "fill_orders": [
+      {
+        "filledTm": "2026-05-10T20:58:36Z",
+        "volume": "0.0010",
+        "price": "67000.0",
+        "amount": "67.0000",
+        "commission": "-0.0335",
+        "currency": "USDT",
+        "orderId": "1737010000000000010",
+        "liquidatedPrice": "",
+        "liquidatedMarginRatio": "",
+        "filledTime": "2026-05-10T20:58:36.000+0000",
+        "clientOrderId": "my-bot-uuid-001",
+        "symbol": "BTC-USDT"
+      }
+    ]
+  }
+}
