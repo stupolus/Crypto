@@ -71,6 +71,18 @@ rest_endpoints:
   funding_rate_history: /openApi/swap/v2/quote/fundingRate
   open_interest: /openApi/swap/v2/quote/openInterest
 
+# ─── Приватные REST-эндпоинты ────────────────────────────────────────────────
+# Пути верифицированы по docs-v3 (JS-бандлу) 2026-05-11.
+# balance — на V3 (V2 устарел), остальные — на V2/V1.
+private_endpoints:
+  balance: /openApi/swap/v3/user/balance          # V3 → list[{asset, balance, equity, ...}]
+  positions: /openApi/swap/v2/user/positions       # list[{symbol, positionSide, positionAmt, ...}]
+  open_orders: /openApi/swap/v2/trade/openOrders   # {orders: [...]}
+  fills: /openApi/swap/v2/trade/allFillOrders      # {fill_orders: [...]}, требует startTs/endTs
+  set_margin_type: /openApi/swap/v2/trade/marginType
+  set_leverage: /openApi/swap/v2/trade/leverage
+  position_mode: /openApi/swap/v1/positionSide/dual  # GET для чтения, POST для записи
+
 # ─── Klines ──────────────────────────────────────────────────────────────────
 # Источник: docs-v3 → USDT-M Perp Futures → Get K-Line Data.
 klines:

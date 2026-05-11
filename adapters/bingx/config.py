@@ -81,6 +81,16 @@ class RestEndpoints(_StrictModel):
     open_interest: str
 
 
+class PrivateEndpoints(_StrictModel):
+    balance: str
+    positions: str
+    open_orders: str
+    fills: str
+    set_margin_type: str
+    set_leverage: str
+    position_mode: str
+
+
 class KlinesConfig(_StrictModel):
     limit_default: int = Field(gt=0)
     limit_max: int = Field(gt=0)
@@ -127,6 +137,7 @@ class BingXConfig(_StrictModel):
     rate_limits: RateLimitsConfig
     signing: SigningConfig
     rest_endpoints: RestEndpoints
+    private_endpoints: PrivateEndpoints
     klines: KlinesConfig
     websocket: WebSocketConfig
     defaults: DefaultsConfig

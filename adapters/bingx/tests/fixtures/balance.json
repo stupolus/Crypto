@@ -1,0 +1,29 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": [
+    {
+      "userId": "12345678",
+      "asset": "USDT",
+      "balance": "1000.0000",
+      "equity": "1002.5000",
+      "unrealizedProfit": "2.5000",
+      "realisedProfit": "0.0000",
+      "availableMargin": "998.0000",
+      "usedMargin": "4.5000",
+      "freezedMargin": "0.0000",
+      "shortUid": "12345678"
+    },
+    {
+      "userId": "12345678",
+      "asset": "BTC",
+      "balance": "0.05000000",
+      "equity": "0.04998750",
+      "unrealizedProfit": "-0.00001250",
+      "availableMargin": "0.04990000",
+      "usedMargin": "0.00010000",
+      "freezedMargin": "0.00000000",
+      "shortUid": "12345678"
+    }
+  ]
+}

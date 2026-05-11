@@ -1,0 +1,23 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": [
+    {
+      "symbol": "BTC-USDT",
+      "positionId": "1737000000000000000",
+      "positionSide": "LONG",
+      "isolated": true,
+      "positionAmt": "0.0010",
+      "availableAmt": "0.0010",
+      "unrealizedProfit": "0.50000000",
+      "initialMargin": "10.00000000",
+      "liquidationPrice": 45000.5,
+      "avgPrice": "67000.0",
+      "leverage": 5,
+      "markPrice": "67500.0",
+      "riskRate": "0.00050000",
+      "maxMarginReduction": "5.0",
+      "updateTime": 1718409600901
+    }
+  ]
+}
