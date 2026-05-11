@@ -22,6 +22,15 @@ from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
+from strategies.trend_ema_4h import (
+    TrendEmaStrategy,
+)
+from strategies.trend_ema_4h import (
+    get_default_config as trend_get_default_config,
+)
+from strategies.trend_ema_4h.config import (
+    load_config as trend_load_config,
+)
 from strategies.us_session_breakout import (
     UsSessionBreakoutStrategy,
 )
@@ -90,7 +99,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--strategy",
-        choices=["btc_breakout", "us_session_breakout"],
+        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
         default="btc_breakout",
         help="Какую стратегию прогонять",
     )
@@ -148,6 +157,17 @@ def main() -> None:
             return UsSessionBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _us_factory
+    elif args.strategy == "trend_ema_4h":
+        strategy_cfg = (
+            trend_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else trend_get_default_config()
+        )
+
+        def _trend_factory(cfg: Any) -> Strategy:
+            return TrendEmaStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _trend_factory
     else:  # btc_breakout
         strategy_cfg = (
             load_strategy_config(args.strategy_config)

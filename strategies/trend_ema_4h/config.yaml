@@ -1,0 +1,17 @@
+# Trend following EMA cross 4h. Параметры зафиксированы ДО прогона.
+
+symbol: BTC-USDT
+timeframe: 4h
+
+ema_fast: 20
+ema_slow: 50
+
+atr_window: 14
+sl_atr_multiplier: 1.5
+
+min_ema_spread_pct: 0.2     # % разрыв EMA20-EMA50, иначе тренд слабый
+
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+
+risk_tier: B
