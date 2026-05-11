@@ -16,6 +16,7 @@ from adapters.bingx.exceptions import (
     ConfigError,
     InvalidResponseError,
     NetworkError,
+    OrderRejected,
     RateLimited,
     ServerError,
     WebSocketError,
@@ -23,33 +24,44 @@ from adapters.bingx.exceptions import (
 from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
 from adapters.bingx.private import PrivateAPI
 from adapters.bingx.private_models import (
+    AccountUpdateEvent,
     Balance,
+    BalanceDelta,
     EntryOrderType,
     Fill,
     MarginType,
     Order,
+    OrderAck,
     OrderRequest,
     OrderSide,
     OrderStatus,
     OrderType,
+    OrderUpdateEvent,
     Position,
+    PositionDelta,
     PositionSide,
     TimeInForce,
+    UserStreamEvent,
+    parse_user_stream_event,
 )
 from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings, load_settings
 from adapters.bingx.time_sync import ServerTimeSyncer
+from adapters.bingx.user_stream import BingXUserDataStream
 from adapters.bingx.websocket import BingXMarketWebSocket
 
 __all__ = [
     "APIError",
+    "AccountUpdateEvent",
     "AuthError",
     "Balance",
+    "BalanceDelta",
     "BingXClient",
     "BingXConfig",
     "BingXError",
     "BingXMarketWebSocket",
     "BingXSettings",
+    "BingXUserDataStream",
     "ConfigError",
     "Contract",
     "EntryOrderType",
@@ -59,11 +71,15 @@ __all__ = [
     "MarginType",
     "NetworkError",
     "Order",
+    "OrderAck",
+    "OrderRejected",
     "OrderRequest",
     "OrderSide",
     "OrderStatus",
     "OrderType",
+    "OrderUpdateEvent",
     "Position",
+    "PositionDelta",
     "PositionSide",
     "PrivateAPI",
     "PublicAPI",
@@ -73,9 +89,11 @@ __all__ = [
     "ServerTimeSyncer",
     "Ticker",
     "TimeInForce",
+    "UserStreamEvent",
     "WebSocketError",
     "get_default_config",
     "load_config",
     "load_settings",
+    "parse_user_stream_event",
     "sign_query",
 ]

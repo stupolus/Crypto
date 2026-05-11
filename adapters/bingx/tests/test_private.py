@@ -353,7 +353,30 @@ import json as _json  # noqa: E402
 from adapters.bingx.private_models import OrderRequest  # noqa: E402
 
 
-def _order_ok_payload(order_id: str = "1001", status: str = "NEW") -> dict[str, Any]:
+def _stop_market_order_stub() -> dict[str, Any]:
+    """Заглушка attached SL в openOrders: STOP_MARKET + reduce_only=True."""
+    return {
+        "orderId": "9999",
+        "symbol": "BTC-USDT",
+        "side": "SELL",
+        "positionSide": "BOTH",
+        "type": "STOP_MARKET",
+        "status": "NEW",
+        "price": "0",
+        "origQty": "0.001",
+        "executedQty": "0",
+        "stopPrice": "60000",
+        "time": 1_700_000_000_000,
+        "updateTime": 1_700_000_000_500,
+        "reduceOnly": True,
+    }
+
+
+def _order_ok_payload(
+    order_id: str = "1001",
+    status: str = "NEW",
+    with_stop_loss: bool = True,
+) -> dict[str, Any]:
     return {
         "order": {
             "orderId": order_id,
@@ -368,6 +391,12 @@ def _order_ok_payload(order_id: str = "1001", status: str = "NEW") -> dict[str, 
             "executedQty": "0",
             "avgPrice": "0",
             "stopPrice": "0",
+            "stopLoss": (
+                '{"type":"STOP_MARKET","stopPrice":60000,"workingType":"MARK_PRICE"}'
+                if with_stop_loss
+                else ""
+            ),
+            "takeProfit": "",
             "time": 1_700_000_001_000,
             "updateTime": 1_700_000_001_500,
             "reduceOnly": False,
@@ -621,3 +650,240 @@ async def test_close_position_long_sends_sell_reduce_only_market(
     # close-side не несёт attached SL/TP.
     assert "stopLoss" not in sent
     assert "takeProfit" not in sent
+
+
+# ─── 0.D part 2: listenKey CRUD, cancel_all_after, compensating-close ──────
+
+
+@pytest.mark.asyncio
+async def test_create_listen_key_returns_string(cfg: BingXConfig) -> None:
+    """Квирк §7 п.34: userDataStream возвращает СЫРОЙ {listenKey: ...}
+    без envelope `{code, msg, data}`. Используем `raw_response=True`."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        mock.post(cfg.rest_endpoints.user_data_stream).mock(
+            return_value=httpx.Response(200, json={"listenKey": "abc123def456"})
+        )
+        key = await PrivateAPI(client).create_listen_key()
+    assert key == "abc123def456"
+
+
+@pytest.mark.asyncio
+async def test_keep_alive_listen_key_sends_put_with_key(cfg: BingXConfig) -> None:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        route = mock.put(cfg.rest_endpoints.user_data_stream).mock(
+            return_value=httpx.Response(200, json=_ok({}))
+        )
+        await PrivateAPI(client).keep_alive_listen_key("abc123def456")
+    params = dict(route.calls.last.request.url.params)
+    assert params["listenKey"] == "abc123def456"
+
+
+@pytest.mark.asyncio
+async def test_keep_alive_listen_key_rejects_empty(cfg: BingXConfig) -> None:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
+        with pytest.raises(ValueError, match="listen_key"):
+            await PrivateAPI(client).keep_alive_listen_key("")
+
+
+@pytest.mark.asyncio
+async def test_close_listen_key_sends_delete_with_key(cfg: BingXConfig) -> None:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        route = mock.delete(cfg.rest_endpoints.user_data_stream).mock(
+            return_value=httpx.Response(200, json=_ok({}))
+        )
+        await PrivateAPI(client).close_listen_key("abc123def456")
+    params = dict(route.calls.last.request.url.params)
+    assert params["listenKey"] == "abc123def456"
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_after_sends_post_with_timeout(cfg: BingXConfig) -> None:
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        route = mock.post(cfg.rest_endpoints.cancel_all_after).mock(
+            return_value=httpx.Response(200, json=_ok({}))
+        )
+        await PrivateAPI(client).cancel_all_after(60_000)
+    params = dict(route.calls.last.request.url.params)
+    assert int(params["timeOut"]) == 60_000
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_after_rejects_negative(cfg: BingXConfig) -> None:
+    async with BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client:
+        with pytest.raises(ValueError, match="timeout_ms"):
+            await PrivateAPI(client).cancel_all_after(-1)
+
+
+@pytest.mark.asyncio
+async def test_place_order_compensating_close_when_ack_missing_stop_loss(
+    cfg: BingXConfig,
+) -> None:
+    """Если в ack отсутствует поле stopLoss — close_position + OrderRejected.
+
+    Квирк §7 п.36: attached SL возвращается в ack.order.stopLoss как
+    stringified JSON. Если поле пусто/отсутствует — BingX не сохранил SL.
+    """
+    from adapters.bingx.exceptions import OrderRejected
+
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        # place_order ack — успех, но stopLoss пустой
+        ack_payload = _order_ok_payload()
+        ack_payload["order"]["stopLoss"] = ""  # SL пуст
+        mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(200, json=_ok(ack_payload))
+        )
+        # close_position зовёт cancel_all + get_positions + place_order(close)
+        mock.delete(cfg.rest_endpoints.cancel_all_orders).mock(
+            return_value=httpx.Response(200, json=_ok({"orders": []}))
+        )
+        mock.get(cfg.rest_endpoints.positions).mock(
+            return_value=httpx.Response(
+                200,
+                json=_ok(
+                    [
+                        {
+                            "symbol": "BTC-USDT",
+                            "positionId": "p1",
+                            "positionSide": "BOTH",
+                            "positionAmt": "0.001",
+                            "avgPrice": "62000",
+                            "leverage": 3,
+                            "unrealizedProfit": "0",
+                        }
+                    ]
+                ),
+            )
+        )
+        req = OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            attached_stop_loss=Decimal("60000"),
+        )
+        with pytest.raises(OrderRejected, match="without confirmed SL"):
+            await PrivateAPI(client).place_order(req)
+
+
+@pytest.mark.asyncio
+async def test_place_order_accepts_ack_with_stop_loss_set(cfg: BingXConfig) -> None:
+    """ack с непустым stopLoss → SL подтверждён, OrderRejected не поднимаем."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        ack_payload = _order_ok_payload()
+        ack_payload["order"]["stopLoss"] = (
+            '{"type":"STOP_MARKET","stopPrice":60000,"workingType":"MARK_PRICE"}'
+        )
+        mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(200, json=_ok(ack_payload))
+        )
+        req = OrderRequest(
+            symbol="BTC-USDT",
+            side="BUY",
+            order_type="MARKET",
+            quantity=Decimal("0.001"),
+            attached_stop_loss=Decimal("60000"),
+        )
+        ack = await PrivateAPI(client).place_order(req)
+        assert ack.has_attached_stop_loss
+
+
+def test_parse_user_stream_event_returns_none_for_unknown() -> None:
+    from adapters.bingx.private_models import parse_user_stream_event
+
+    assert parse_user_stream_event({"e": "UNKNOWN_TYPE"}) is None
+
+
+def test_parse_user_stream_event_order_trade_update() -> None:
+    from adapters.bingx.private_models import OrderUpdateEvent, parse_user_stream_event
+
+    raw = {
+        "e": "ORDER_TRADE_UPDATE",
+        "E": 1_700_000_000_500,
+        "T": 1_700_000_000_499,
+        "o": {
+            "s": "BTC-USDT",
+            "i": 1234567890,
+            "c": "my-coid",
+            "S": "BUY",
+            "o": "MARKET",
+            "X": "FILLED",
+            "ps": "BOTH",
+            "p": "0",
+            "q": "0.001",
+            "z": "0.001",
+            "ap": "62000",
+            "sp": None,
+            "n": "-0.0001",
+            "N": "VST",
+            "rp": "0",
+            "R": False,
+            "x": "TRADE",
+        },
+    }
+    event = parse_user_stream_event(raw)
+    assert isinstance(event, OrderUpdateEvent)
+    assert event.order_id == "1234567890"
+    assert event.status == "FILLED"
+    assert event.executed_quantity == Decimal("0.001")
+    assert event.execution_type == "TRADE"
+
+
+def test_parse_user_stream_event_account_update() -> None:
+    from adapters.bingx.private_models import (
+        AccountUpdateEvent,
+        parse_user_stream_event,
+    )
+
+    raw = {
+        "e": "ACCOUNT_UPDATE",
+        "E": 1_700_000_001_000,
+        "a": {
+            "B": [
+                {"a": "VST", "wb": "99999.5", "cw": "99999.5", "bc": "-0.5"}
+            ],
+            "P": [
+                {
+                    "s": "BTC-USDT",
+                    "pa": "0.001",
+                    "ep": "62000",
+                    "cr": "0",
+                    "up": "0",
+                    "mt": "ISOLATED",
+                    "iw": "100",
+                    "ps": "BOTH",
+                }
+            ],
+        },
+    }
+    event = parse_user_stream_event(raw)
+    assert isinstance(event, AccountUpdateEvent)
+    assert len(event.balances) == 1
+    assert event.balances[0].asset == "VST"
+    assert event.balances[0].wallet_balance == Decimal("99999.5")
+    assert len(event.positions) == 1
+    assert event.positions[0].symbol == "BTC-USDT"
+    assert event.positions[0].position_amount == Decimal("0.001")
