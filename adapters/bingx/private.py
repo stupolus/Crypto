@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from adapters.bingx.client import BingXClient
 from adapters.bingx.config import BingXConfig
-from adapters.bingx.exceptions import APIError, InvalidResponseError
+from adapters.bingx.exceptions import APIError, InvalidResponseError, OrderRejected
 from adapters.bingx.private_models import (
     Balance,
     Fill,
@@ -111,6 +111,18 @@ def _extract_order_payload(data: Any) -> Any:
 # идемпотентен на flat-аккаунте.
 _NOTHING_TO_CANCEL_CODES = frozenset({80018, 80020, 109414})
 _NOTHING_TO_CANCEL_HINTS = ("no order", "no orders", "not exist", "не найд")
+
+
+def _extract_listen_key(data: Any) -> str:
+    """``POST /openApi/user/auth/userDataStream`` возвращает ``{"listenKey": "..."}``."""
+    if isinstance(data, dict) and isinstance(data.get("listenKey"), str):
+        key = data["listenKey"]
+        if not key:
+            raise InvalidResponseError("listenKey is empty")
+        return str(key)
+    raise InvalidResponseError(
+        f"unexpected userDataStream payload: {type(data).__name__}"
+    )
 
 
 def _is_nothing_to_cancel(err: APIError) -> bool:
@@ -295,7 +307,24 @@ class PrivateAPI:
             "POST", self._endpoints.place_order, params=params
         )
         order_obj = _extract_order_payload(data)
-        return OrderAck.model_validate(order_obj)
+        ack = OrderAck.model_validate(order_obj)
+        # Compensating-close для entry-ордера с attached_stop_loss:
+        # Квирк §7 п.36: attached SL возвращается прямо в ack как
+        # stringified JSON в поле ``stopLoss``. Самостоятельного STOP_MARKET
+        # ордера в /openOrders нет. Проверяем ack.has_attached_stop_loss.
+        # Если пусто — BingX по какой-то причине не сохранил SL → закрываем
+        # позицию рыночным reduce_only.
+        if (
+            not req.reduce_only
+            and req.attached_stop_loss is not None
+            and not ack.has_attached_stop_loss
+        ):
+            await self.close_position(req.symbol)
+            raise OrderRejected(
+                f"entry order {ack.order_id} placed without confirmed SL in ack "
+                "(stopLoss field empty) — position closed"
+            )
+        return ack
 
     async def cancel_order(
         self,
@@ -380,6 +409,64 @@ class PrivateAPI:
             reduce_only=True,
         )
         return await self.place_order(close_req)
+
+    # ── Dead-man timer (фаза 0.D part 2) ───────────────────────────────────
+
+    async def cancel_all_after(self, timeout_ms: int) -> None:
+        """Биржевой dead-man таймер (квирк §7 п.24 plans/01).
+
+        Если адаптер не вызовет `cancel_all_after(0)` или новый
+        `cancel_all_after(t)` в течение `timeout_ms`, BingX сам отменит все
+        открытые ордера по аккаунту. Это страховка на случай зависания
+        процесса / сетевого разрыва.
+
+        ``timeout_ms=0`` — отмена таймера (для штатного шатдауна).
+        Каждый вызов сбрасывает предыдущий.
+        """
+        if timeout_ms < 0:
+            raise ValueError(f"timeout_ms must be ≥ 0, got {timeout_ms}")
+        await self._client.request_signed(
+            "POST",
+            self._endpoints.cancel_all_after,
+            params={"timeOut": timeout_ms},
+        )
+
+    # ── listenKey CRUD (фаза 0.D part 2) ───────────────────────────────────
+
+    async def create_listen_key(self) -> str:
+        """Создать listenKey для User Data Stream. TTL 1 час.
+
+        Квирк live VST §7 п.34: эндпоинт возвращает сырой
+        ``{"listenKey": "..."}`` без envelope `{code, msg, data}` —
+        используем `raw_response=True`.
+        """
+        data = await self._client.request_signed(
+            "POST", self._endpoints.user_data_stream, raw_response=True
+        )
+        key = _extract_listen_key(data)
+        return key
+
+    async def keep_alive_listen_key(self, listen_key: str) -> None:
+        """Продлить TTL listenKey ещё на 1 час."""
+        if not listen_key:
+            raise ValueError("listen_key must not be empty")
+        await self._client.request_signed(
+            "PUT",
+            self._endpoints.user_data_stream,
+            params={"listenKey": listen_key},
+            raw_response=True,
+        )
+
+    async def close_listen_key(self, listen_key: str) -> None:
+        """Закрыть listenKey (на теплом шатдауне)."""
+        if not listen_key:
+            raise ValueError("listen_key must not be empty")
+        await self._client.request_signed(
+            "DELETE",
+            self._endpoints.user_data_stream,
+            params={"listenKey": listen_key},
+            raw_response=True,
+        )
 
     # ── helpers ────────────────────────────────────────────────────────────
 

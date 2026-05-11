@@ -198,6 +198,12 @@ class OrderAck(_StrictModel):
     ``side``, ``positionSide``, ``type``. Остальное опционально и зависит от
     типа ордера / стадии исполнения. ``orderId`` приходит как ``int``
     (BingX snowflake-id), мы кастуем в ``str`` для единообразия с `Order`.
+
+    Квирк live VST §7 п.36: **attached SL/TP возвращаются прямо в ack** как
+    stringified JSON в полях ``stopLoss``/``takeProfit``. В ``/openOrders``
+    отдельных stop-ордеров **нет** (BingX держит attached SL/TP как атрибут
+    основного ордера, не как самостоятельный). Поэтому compensating-check
+    смотрит сюда.
     """
 
     order_id: str = Field(alias="orderId")
@@ -215,6 +221,14 @@ class OrderAck(_StrictModel):
     reduce_only: bool | None = Field(default=None, alias="reduceOnly")
     time_ms: int | None = Field(default=None, alias="time")
     update_time_ms: int | None = Field(default=None, alias="updateTime")
+    # Сырые stringified JSON-поля attached SL/TP. Пустая строка = не задан.
+    attached_stop_loss_raw: str | None = Field(default=None, alias="stopLoss")
+    attached_take_profit_raw: str | None = Field(default=None, alias="takeProfit")
+
+    @property
+    def has_attached_stop_loss(self) -> bool:
+        raw = (self.attached_stop_loss_raw or "").strip()
+        return bool(raw) and raw not in {"{}", "null"}
 
     @field_validator("order_id", mode="before")
     @classmethod
@@ -229,6 +243,139 @@ class OrderAck(_StrictModel):
         if "-" not in v:
             raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
         return v
+
+
+# ─── User Data Stream события (фаза 0.D part 2) ──────────────────────────────
+
+
+class OrderUpdateEvent(_StrictModel):
+    """Событие ``ORDER_TRADE_UPDATE`` из User Data Stream.
+
+    BingX оборачивает данные ордера в ``o`` (object), top-level — ``e``/``E``/``T``.
+    Маппим вложенные поля через `model_validator` (pre): подтягиваем нужное
+    из ``o`` в top-level.
+    """
+
+    event_type: Literal["ORDER_TRADE_UPDATE"] = Field(alias="e")
+    event_time_ms: int = Field(alias="E")
+    symbol: str
+    order_id: str
+    client_order_id: str | None = None
+    side: OrderSide
+    type: OrderType
+    status: OrderStatus
+    position_side: PositionSide
+    price: Decimal
+    original_quantity: Decimal
+    executed_quantity: Decimal
+    average_price: Decimal | None = None
+    stop_price: Decimal | None = None
+    commission: Decimal | None = None
+    commission_asset: str | None = None
+    realised_profit: Decimal | None = None
+    reduce_only: bool | None = None
+    execution_type: Literal[
+        "NEW", "CANCELED", "CALCULATED", "EXPIRED", "TRADE", "AMENDMENT"
+    ]
+
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _coerce_oid(cls, v: object) -> str:
+        return str(v)
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+    @classmethod
+    def from_raw(cls, raw: dict[str, object]) -> OrderUpdateEvent:
+        """Распарсить top-level event с вложенным ``o``."""
+        if "o" not in raw or not isinstance(raw["o"], dict):
+            raise ValueError("ORDER_TRADE_UPDATE missing 'o' object")
+        order = raw["o"]
+        merged = {
+            "e": raw.get("e"),
+            "E": raw.get("E"),
+            "symbol": order.get("s"),
+            "order_id": order.get("i"),
+            "client_order_id": order.get("c") or None,
+            "side": order.get("S"),
+            "type": order.get("o"),
+            "status": order.get("X"),
+            "position_side": order.get("ps"),
+            "price": order.get("p"),
+            "original_quantity": order.get("q"),
+            "executed_quantity": order.get("z", "0"),
+            "average_price": order.get("ap"),
+            "stop_price": order.get("sp"),
+            "commission": order.get("n"),
+            "commission_asset": order.get("N"),
+            "realised_profit": order.get("rp"),
+            "reduce_only": order.get("R"),
+            "execution_type": order.get("x"),
+        }
+        return cls.model_validate(merged)
+
+
+class BalanceDelta(_StrictModel):
+    asset: str = Field(alias="a")
+    wallet_balance: Decimal = Field(alias="wb")
+    cross_wallet_balance: Decimal | None = Field(default=None, alias="cw")
+    balance_change: Decimal | None = Field(default=None, alias="bc")
+
+
+class PositionDelta(_StrictModel):
+    symbol: str = Field(alias="s")
+    position_amount: Decimal = Field(alias="pa")
+    entry_price: Decimal = Field(alias="ep")
+    accumulated_realised: Decimal | None = Field(default=None, alias="cr")
+    unrealized_pnl: Decimal = Field(alias="up")
+    margin_type: MarginType | None = Field(default=None, alias="mt")
+    isolated_wallet: Decimal | None = Field(default=None, alias="iw")
+    position_side: PositionSide = Field(alias="ps")
+
+
+class AccountUpdateEvent(_StrictModel):
+    """Событие ``ACCOUNT_UPDATE``: баланс + позиции."""
+
+    event_type: Literal["ACCOUNT_UPDATE"] = Field(alias="e")
+    event_time_ms: int = Field(alias="E")
+    balances: list[BalanceDelta] = Field(default_factory=list)
+    positions: list[PositionDelta] = Field(default_factory=list)
+
+    @classmethod
+    def from_raw(cls, raw: dict[str, object]) -> AccountUpdateEvent:
+        a = raw.get("a")
+        if not isinstance(a, dict):
+            raise ValueError("ACCOUNT_UPDATE missing 'a' object")
+        return cls.model_validate(
+            {
+                "e": raw.get("e"),
+                "E": raw.get("E"),
+                "balances": a.get("B", []),
+                "positions": a.get("P", []),
+            }
+        )
+
+
+UserStreamEvent = OrderUpdateEvent | AccountUpdateEvent
+
+
+def parse_user_stream_event(raw: dict[str, object]) -> UserStreamEvent | None:
+    """Распарсить сырое сообщение из user-data WS.
+
+    Возвращает ``None`` для неподдерживаемых типов событий (адаптер пропускает,
+    стратегия не должна получать их в стриме).
+    """
+    event_type = raw.get("e")
+    if event_type == "ORDER_TRADE_UPDATE":
+        return OrderUpdateEvent.from_raw(raw)
+    if event_type == "ACCOUNT_UPDATE":
+        return AccountUpdateEvent.from_raw(raw)
+    return None
 
 
 # ─── Запрос на размещение ордера (наша доменная модель) ──────────────────────

@@ -93,6 +93,9 @@ class RestEndpoints(_StrictModel):
     place_order: str
     cancel_order: str
     cancel_all_orders: str
+    # Trade (фаза 0.D part 2)
+    cancel_all_after: str
+    user_data_stream: str
 
 
 class KlinesConfig(_StrictModel):
@@ -121,6 +124,25 @@ class WebSocketConfig(_StrictModel):
     subscribe_ack_timeout_s: float = Field(gt=0)
 
 
+class PlaceOrderConfig(_StrictModel):
+    compensating_check_delay_ms: int = Field(ge=0)
+    compensating_check_attempts: int = Field(ge=1)
+    compensating_check_backoff_factor: float = Field(gt=1)
+
+
+class UserDataStreamConfig(_StrictModel):
+    keep_alive_interval_s: float = Field(gt=0)
+    reconnect_initial_delay_s: float = Field(gt=0)
+    reconnect_max_delay_s: float = Field(gt=0)
+    reconnect_factor: float = Field(gt=1)
+    watchdog_silence_s: float = Field(gt=0)
+
+
+class CancelAllAfterConfig(_StrictModel):
+    default_window_ms: int = Field(gt=0)
+    refresh_interval_s: float = Field(gt=0)
+
+
 class DefaultsConfig(_StrictModel):
     primary_symbol: str
     primary_interval_rest: str
@@ -143,6 +165,9 @@ class BingXConfig(_StrictModel):
     rest_endpoints: RestEndpoints
     klines: KlinesConfig
     websocket: WebSocketConfig
+    place_order: PlaceOrderConfig
+    user_data_stream: UserDataStreamConfig
+    cancel_all_after: CancelAllAfterConfig
     defaults: DefaultsConfig
     invariants: InvariantsConfig
 
