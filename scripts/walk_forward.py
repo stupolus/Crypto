@@ -90,9 +90,7 @@ def _build_strategy(name: str, risk: RiskEngine, config_path: Path | None = None
         us_cfg = us_load_config(config_path) if config_path else us_get_default_config()
         return UsSessionBreakoutStrategy(config=us_cfg, risk_engine=risk)
     if name == "trend_ema_4h":
-        trend_cfg = (
-            trend_load_config(config_path) if config_path else trend_get_default_config()
-        )
+        trend_cfg = trend_load_config(config_path) if config_path else trend_get_default_config()
         return TrendEmaStrategy(config=trend_cfg, risk_engine=risk)
     raise SystemExit(f"unknown strategy: {name}")
 
