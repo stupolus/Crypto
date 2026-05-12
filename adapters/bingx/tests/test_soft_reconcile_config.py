@@ -8,9 +8,11 @@ from pydantic import ValidationError
 from adapters.bingx.config import BingXConfig, load_config
 
 
-def test_soft_reconcile_disabled_by_default() -> None:
+def test_soft_reconcile_enabled_in_default_config() -> None:
+    """С 2026-05-12 включён в config.yaml (120s) для D3 demo + live.
+    См. ветку claude/ws-resubscribe-retry-and-soft-reconcile."""
     cfg = load_config()
-    assert cfg.user_data_stream.soft_reconcile_interval_s == 0
+    assert cfg.user_data_stream.soft_reconcile_interval_s == 120.0
 
 
 def test_soft_reconcile_negative_rejected() -> None:
