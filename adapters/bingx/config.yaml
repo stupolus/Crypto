@@ -159,7 +159,7 @@ user_data_stream:
   # Periodic soft-reconcile: каждые N сек эмитим RECONCILE-event с
   # REST-снимком, даже если WS не разрывался. Защита от «потеря push
   # в полёте» (BingX баг / network glitch без disconnect).
-  soft_reconcile_interval_s: 0           # 0 = выключено. На live включить 60-180s.
+  soft_reconcile_interval_s: 120         # 2 мин — защита от «потерянных push в полёте» на D3 demo и live.
 
 # ─── cancelAllAfter (0.D part 2) ─────────────────────────────────────────────
 # Биржевой dead-man (квирк §7 п.24). Если адаптер не сбросит таймер за окно,

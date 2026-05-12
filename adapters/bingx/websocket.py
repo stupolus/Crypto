@@ -255,11 +255,36 @@ class BingXMarketWebSocket:
             delay = min(delay * rc.factor, rc.max_delay_s)
 
     async def _resubscribe_all(self) -> None:
+        """Переподписать все каналы после reconnect.
+
+        BingX иногда отдаёт ack-timeout на первый sub после reconnect
+        (наблюдалось в D3 dry-run 2026-05-12). Делаем до 3 попыток с
+        экспоненциальным backoff. Если всё равно фейлится — логируем ERROR
+        (watchdog поднимет полный reconnect если канал реально мёртвый).
+        """
         for channel in list(self._channels):
-            try:
-                await self._send_subscribe(channel)
-            except Exception as e:
-                logger.warning("BingX WS resubscribe failed channel=%s: %s", channel, e)
+            last_exc: Exception | None = None
+            for attempt in range(1, 4):
+                try:
+                    await self._send_subscribe(channel)
+                    last_exc = None
+                    break
+                except Exception as e:
+                    last_exc = e
+                    logger.warning(
+                        "BingX WS resubscribe attempt %d/3 failed channel=%s: %s",
+                        attempt,
+                        channel,
+                        e,
+                    )
+                    if attempt < 3:
+                        await asyncio.sleep(2.0 * attempt)
+            if last_exc is not None:
+                logger.error(
+                    "BingX WS resubscribe permanently failed channel=%s after 3 attempts: %s",
+                    channel,
+                    last_exc,
+                )
 
     async def _reader_inner(self) -> None:
         if self._conn is None:

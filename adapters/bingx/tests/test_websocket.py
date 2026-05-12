@@ -211,3 +211,56 @@ async def test_subscribe_before_connect_raises(cfg: BingXConfig) -> None:
     ws = BingXMarketWebSocket(cfg)
     with pytest.raises(WebSocketError, match="before connect"):
         await ws.subscribe("BTC-USDT@kline_1min")
+
+
+@pytest.mark.asyncio
+async def test_resubscribe_retries_on_transient_ack_timeout(
+    cfg: BingXConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Регрессия на наблюдение D3 dry-run 2026-05-12: BingX иногда отдаёт
+    ack-timeout на первый resubscribe после reconnect. Должны ретраить."""
+    ws = BingXMarketWebSocket(cfg)
+    ws._channels["BTC-USDT@kline_15m"] = asyncio.Queue()
+
+    attempts: list[int] = []
+
+    async def flaky_send(channel: str) -> None:
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 3:
+            raise WebSocketError("ack timeout")
+        # 3-я попытка — успех.
+
+    # Замедляем backoff, чтобы тест не тянул секунды.
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+    monkeypatch.setattr(ws, "_send_subscribe", flaky_send)
+    await ws._resubscribe_all()
+    assert len(attempts) == 3, f"expected 3 attempts, got {attempts}"
+
+
+@pytest.mark.asyncio
+async def test_resubscribe_gives_up_after_3_attempts(
+    cfg: BingXConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Если все 3 попытки фейлятся — НЕ raises, идёт к следующему каналу.
+    Watchdog должен поднять полный reconnect если канал реально мёртвый."""
+    ws = BingXMarketWebSocket(cfg)
+    ws._channels["BTC-USDT@kline_15m"] = asyncio.Queue()
+    ws._channels["ETH-USDT@kline_15m"] = asyncio.Queue()
+
+    calls: list[str] = []
+
+    async def always_fails(channel: str) -> None:
+        calls.append(channel)
+        raise WebSocketError("ack timeout")
+
+    monkeypatch.setattr("asyncio.sleep", _instant_sleep)
+    monkeypatch.setattr(ws, "_send_subscribe", always_fails)
+    # Не raises — пробует оба канала.
+    await ws._resubscribe_all()
+    # 3 попытки × 2 канала.
+    assert len(calls) == 6, f"expected 6 calls, got {calls}"
+
+
+async def _instant_sleep(_: float) -> None:
+    """Заглушка asyncio.sleep — мгновенно возвращает control."""
+    return None
