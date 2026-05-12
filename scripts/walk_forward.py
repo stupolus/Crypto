@@ -34,10 +34,13 @@ from core.backtest import BacktestEngine, BacktestResult, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy
 from strategies.btc_breakout import get_default_config as btc_get_default_config
+from strategies.btc_breakout.config import load_config as btc_load_config
 from strategies.trend_ema_4h import TrendEmaStrategy
 from strategies.trend_ema_4h import get_default_config as trend_get_default_config
+from strategies.trend_ema_4h.config import load_config as trend_load_config
 from strategies.us_session_breakout import UsSessionBreakoutStrategy
 from strategies.us_session_breakout import get_default_config as us_get_default_config
+from strategies.us_session_breakout.config import load_config as us_load_config
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +82,18 @@ def _slice_by_time(candles: Sequence[Kline], start_ms: int, end_ms: int) -> list
     return [c for c in candles if start_ms <= c.open_time_ms < end_ms]
 
 
-def _build_strategy(name: str, risk: RiskEngine) -> Any:
+def _build_strategy(name: str, risk: RiskEngine, config_path: Path | None = None) -> Any:
     if name == "btc_breakout":
-        return BtcBreakoutStrategy(config=btc_get_default_config(), risk_engine=risk)
+        btc_cfg = btc_load_config(config_path) if config_path else btc_get_default_config()
+        return BtcBreakoutStrategy(config=btc_cfg, risk_engine=risk)
     if name == "us_session_breakout":
-        return UsSessionBreakoutStrategy(config=us_get_default_config(), risk_engine=risk)
+        us_cfg = us_load_config(config_path) if config_path else us_get_default_config()
+        return UsSessionBreakoutStrategy(config=us_cfg, risk_engine=risk)
     if name == "trend_ema_4h":
-        return TrendEmaStrategy(config=trend_get_default_config(), risk_engine=risk)
+        trend_cfg = (
+            trend_load_config(config_path) if config_path else trend_get_default_config()
+        )
+        return TrendEmaStrategy(config=trend_cfg, risk_engine=risk)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -105,6 +113,7 @@ def walk_forward(
     is_ms: int,
     oos_ms: int,
     step_ms: int,
+    config_path: Path | None = None,
 ) -> list[WindowResult]:
     """Скользящие окна по timeline."""
     if not candles:
@@ -126,11 +135,11 @@ def walk_forward(
             break
 
         is_engine = BacktestEngine(backtest_cfg)
-        is_strategy = _build_strategy(strategy_name, RiskEngine())
+        is_strategy = _build_strategy(strategy_name, RiskEngine(), config_path)
         is_result = is_engine.run(is_strategy, is_candles)
 
         oos_engine = BacktestEngine(backtest_cfg)
-        oos_strategy = _build_strategy(strategy_name, RiskEngine())
+        oos_strategy = _build_strategy(strategy_name, RiskEngine(), config_path)
         oos_result = oos_engine.run(oos_strategy, oos_candles)
 
         is_summary = _summary_to_dict(is_result)
@@ -211,6 +220,12 @@ def main() -> None:
         choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
         required=True,
     )
+    parser.add_argument(
+        "--strategy-config",
+        type=Path,
+        default=None,
+        help="Альтернативный config стратегии (для parameter sensitivity)",
+    )
     parser.add_argument("--is-days", type=int, default=60, help="IS window length")
     parser.add_argument("--oos-days", type=int, default=30, help="OOS window length")
     parser.add_argument("--step-days", type=int, default=30, help="Шаг между IS-окнами")
@@ -237,6 +252,7 @@ def main() -> None:
         is_ms=args.is_days * _MS_PER_DAY,
         oos_ms=args.oos_days * _MS_PER_DAY,
         step_ms=args.step_days * _MS_PER_DAY,
+        config_path=args.strategy_config,
     )
 
     print(f"\nWalk-forward windows: {len(results)}")
