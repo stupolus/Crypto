@@ -189,7 +189,46 @@ Output JSON:
 }
 ```
 
-### 3.5 Coordinator (Opus 4.7, ~$0.08/call)
+### 3.5 Macro Analyst (Sonnet 4.6, ~$0.04/call, раз в час)
+
+**Вход:** макро-данные за последние 24ч — DXY, VIX, S&P futures, NDX, gold, oil, 10Y yield, FED calendar events. Источники из Layer 1: yfinance + FRED + EDGAR.
+
+**Что делает:** определяет market regime для crypto-портфеля (RISK_ON / NEUTRAL / RISK_OFF / CRISIS). Кешируется на 1 час, hot-loop sub-agents видят последний macro snapshot.
+
+**Output:**
+```json
+{
+  "regime": "...",
+  "confidence": 0..1,
+  "rationale": "...",
+  "portfolio_hedge_recommended": true|false,
+  "hedge_size_pct_of_long_exposure": 0..50,
+  "risk_off_drivers": [...],
+  "duration_estimate_hours": ...
+}
+```
+
+**Использование:** Coordinator + Risk Overseer получают macro-context при каждом decision. На RISK_OFF — Risk Overseer более строгий, на CRISIS — все лонги отклоняются.
+
+### 3.6 Portfolio Hedger (Sonnet 4.6, ~$0.03/call, по событию)
+
+**Не агент в classic смысле, а функция-эскалатор.** Срабатывает когда:
+- Macro Analyst поставил `portfolio_hedge_recommended: true`
+- Текущая crypto-длинная экспозиция > 50% от max risk budget
+- Открытых hedge-шортов нет
+
+**Что делает:** предлагает SHORT BTC (или ETH если уже есть SHORT BTC) размером 30-50% от суммарной long-delta. Передаёт в Risk Overseer для veto.
+
+**ЖЁСТКОЕ ПРАВИЛО** (см. `бизнес/правила-торговли/анти-хедж-той-же-монеты.md`):
+
+Hedge **НИКОГДА не открывается в том же символе** что существующая позиция в противоположную сторону. Если у нас Long BTC — hedge может быть Short ETH или Short SOL, но **НЕ Short BTC**.
+
+Это страховка для **портфеля**, не для **отдельной позиции**. Same-asset «зелёный хедж» = заморозка убытка + двойной funding. Запрещён на 3 уровнях:
+1. Code-level в Layer 4 (RuleViolation exception)
+2. Risk Overseer prompt-level (veto)
+3. Portfolio Hedger sym-selection logic
+
+### 3.7 Coordinator (Opus 4.7, ~$0.08/call)
 
 **Вход:** все ответы от Market + Sentiment + Risk Overseer + Execution Optimizer
 
@@ -226,8 +265,10 @@ Output:
 | Sentiment Analyst | Haiku 4.5 | 0.005 | 60 | 0.30 |
 | Risk Overseer | Opus 4.7 | 0.10 | 60 | 6.00 |
 | Execution Optimizer | Sonnet 4.6 | 0.02 | 60 | 1.20 |
+| Macro Analyst | Sonnet 4.6 | 0.04 | 720 (1/час) | 28.80 |
+| Portfolio Hedger | Sonnet 4.6 | 0.03 | ~5 (по событию) | 0.15 |
 | Coordinator | Opus 4.7 | 0.08 | 60 | 4.80 |
-| **Hot loop итого** | | | | **~$15/мес** |
+| **Hot loop + Macro итого** | | | | **~$43/мес** |
 
 **Дополнительно:**
 - Twitter/News classification через Groq: ~$10-20/мес (зависит от объёма)
