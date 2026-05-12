@@ -115,23 +115,33 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
     raise SystemExit(f"unknown strategy: {name}")
 
 
-def _decode_kline_message(payload: dict[str, Any]) -> Kline | None:
-    """Из WS-сообщения kline вытащить закрытую свечу.
+def _extract_candle_dict(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Достать candle-dict из WS-сообщения BingX.
 
-    BingX market WS kline payload: ``{"data": [{"T": close_time, "t": open_time,
-    "o", "c", "h", "l", "v", "x": is_closed, ...}]}``.
+    Реальный формат (проверено 2026-05-12):
+    ``{"code":0, "dataType":"BTC-USDT@kline_1m", "s":"BTC-USDT",
+       "data":[{"c","o","h","l","v","T"}]}``
 
-    Возвращаем None если свеча ещё не закрылась.
+    Поля `x` (is_closed) и `t` (open_time) НЕТ. Только `T` (close_time).
+    Каждое сообщение — обновление текущей свечи в реальном времени.
+
+    Возвращает первый элемент `data` если он валидный, иначе None.
+    Close detection (смена `T`) делается на уровне ``_candle_loop``.
     """
     data = payload.get("data")
     if not isinstance(data, list) or not data:
         return None
     candle = data[0]
-    if not candle.get("x", False):  # not closed yet
+    if not isinstance(candle, dict) or "T" not in candle:
         return None
+    return candle
+
+
+def _build_kline_from_ws(candle: dict[str, Any], open_time_ms: int) -> Kline:
+    """Собрать Kline из WS-сообщения, зная open_time."""
     return Kline.model_validate(
         {
-            "time": int(candle["t"]),
+            "time": open_time_ms,
             "open": str(candle["o"]),
             "high": str(candle["h"]),
             "low": str(candle["l"]),
@@ -351,8 +361,20 @@ async def _candle_loop(
     stop_event: asyncio.Event,
     alerter: Alerter,
 ) -> None:
-    """Подписка на market WS + обработка закрытых свечей."""
+    """Подписка на market WS + обработка закрытых свечей.
+
+    Логика детекции close (см. _decode_kline_message):
+    - BingX отдаёт обновления текущей свечи каждые 200ms.
+    - Поле `T` — close timestamp текущей свечи (всегда тот же пока свеча
+      открыта).
+    - Когда свеча закрывается → следующее сообщение приходит с новым `T`.
+    - Мы храним last_snapshot закрывающейся свечи (последнее обновление
+      перед сменой `T`). При смене T → эмитим last_snapshot как closed.
+    """
+    interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
+    last_T: int | None = None
+    last_snapshot: dict[str, Any] | None = None
     async with BingXMarketWebSocket() as ws:
         iterator = await ws.subscribe(channel)
         async for msg in iterator:
@@ -360,10 +382,33 @@ async def _candle_loop(
                 return
             if not isinstance(msg, dict):
                 continue
-            candle = _decode_kline_message(dict(msg))
-            if candle is None:
+            candle_dict = _extract_candle_dict(dict(msg))
+            if candle_dict is None:
                 continue
-            await _handle_closed_candle(candle, args, strategy, state, private_api, alerter)
+            current_T = int(candle_dict["T"])
+            # Если `T` поменялся — предыдущая свеча закрылась.
+            if last_T is not None and current_T != last_T and last_snapshot:
+                # open_time закрывшейся = last_T - interval_ms.
+                # close_time = last_T.
+                open_time_ms = last_T - interval_ms
+                try:
+                    closed = _build_kline_from_ws(last_snapshot, open_time_ms)
+                except Exception:
+                    logger.exception("failed to build closed kline")
+                    last_T = current_T
+                    last_snapshot = dict(candle_dict)
+                    continue
+                logger.info(
+                    "candle closed: %s o=%s c=%s h=%s l=%s",
+                    args.symbol,
+                    closed.open,
+                    closed.close,
+                    closed.high,
+                    closed.low,
+                )
+                await _handle_closed_candle(closed, args, strategy, state, private_api, alerter)
+            last_T = current_T
+            last_snapshot = dict(candle_dict)
 
 
 async def _handle_closed_candle(
