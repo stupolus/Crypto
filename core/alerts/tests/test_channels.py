@@ -64,3 +64,81 @@ async def test_severity_enum_values() -> None:
     assert Severity.INFO.value == "INFO"
     assert Severity.WARNING.value == "WARNING"
     assert Severity.CRITICAL.value == "CRITICAL"
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerter_sends_post_with_correct_payload(
+    respx_mock: object,
+) -> None:
+    """Проверяем что POST уходит в правильный URL с правильным payload."""
+    import httpx
+    import respx
+
+    mock: respx.Router = respx_mock  # type: ignore[assignment]
+    route = mock.post("https://api.telegram.org/botTOKEN/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    async with httpx.AsyncClient() as client:
+        alerter = TelegramAlerter(bot_token="TOKEN", chat_id="42", client=client)
+        await alerter.send_critical("OrderRejected on BTC-USDT")
+
+    assert route.called
+    req = route.calls.last.request
+    import json as _json
+
+    body = _json.loads(req.content)
+    assert body["chat_id"] == "42"
+    assert "OrderRejected on BTC-USDT" in body["text"]
+    assert "[CRITICAL]" in body["text"]
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerter_swallows_http_errors(
+    respx_mock: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """4xx/5xx не должны raises — alerter best-effort."""
+    import httpx
+    import respx
+
+    mock: respx.Router = respx_mock  # type: ignore[assignment]
+    mock.post("https://api.telegram.org/botTOKEN/sendMessage").mock(
+        return_value=httpx.Response(401, json={"ok": False, "description": "Unauthorized"})
+    )
+    async with httpx.AsyncClient() as client:
+        alerter = TelegramAlerter(bot_token="TOKEN", chat_id="42", client=client)
+        with caplog.at_level(logging.WARNING):
+            await alerter.send_critical("test")  # не raises
+    assert any("HTTP 401" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerter_swallows_network_errors(
+    respx_mock: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Network error не должен raises."""
+    import httpx
+    import respx
+
+    mock: respx.Router = respx_mock  # type: ignore[assignment]
+    mock.post("https://api.telegram.org/botTOKEN/sendMessage").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    async with httpx.AsyncClient() as client:
+        alerter = TelegramAlerter(bot_token="TOKEN", chat_id="42", client=client)
+        with caplog.at_level(logging.WARNING):
+            await alerter.send_critical("test")  # не raises
+    assert any("send failed" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerter_noop_when_no_credentials() -> None:
+    """Без токена/chat_id — send не делает HTTP-вызов."""
+    import httpx
+    import respx
+
+    with respx.mock(base_url="https://api.telegram.org", assert_all_called=False) as mock:
+        route = mock.post("/botTOKEN/sendMessage")
+        async with httpx.AsyncClient() as client:
+            alerter = TelegramAlerter(bot_token=None, chat_id="42", client=client)
+            await alerter.send_critical("ignored")
+        assert not route.called

@@ -52,7 +52,7 @@ from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.user_stream import BingXUserDataStream
 from adapters.bingx.websocket import BingXMarketWebSocket
-from core.alerts import Alerter, StdoutAlerter
+from core.alerts import Alerter, StdoutAlerter, TelegramAlerter
 from core.backtest.models import OpenPosition, StrategyContext
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
@@ -180,6 +180,27 @@ class _KlineCloseDetector:
         return closed
 
 
+def _build_alerter() -> Alerter:
+    """Выбрать alerter из env: Telegram (если оба ключа есть) или Stdout.
+
+    Переменные окружения:
+    - TELEGRAM_BOT_TOKEN — токен бота (@BotFather)
+    - TELEGRAM_CHAT_ID — ID чата (через getUpdates)
+
+    Если оба заданы — TelegramAlerter, иначе StdoutAlerter.
+    Stdout всегда работает (логи + journald на VPS).
+    """
+    import os
+
+    bot = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat = os.getenv("TELEGRAM_CHAT_ID")
+    if bot and chat:
+        logger.info("Alerter: Telegram (chat=%s)", chat[:4] + "...")
+        return TelegramAlerter(bot_token=bot, chat_id=chat)
+    logger.info("Alerter: Stdout (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы)")
+    return StdoutAlerter()
+
+
 async def _warm_history(
     public_api: PublicAPI, symbol: str, interval: str, count: int
 ) -> list[Kline]:
@@ -235,7 +256,7 @@ async def run(args: argparse.Namespace) -> None:
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)
 
-        alerter: Alerter = StdoutAlerter()
+        alerter = _build_alerter()
         await alerter.send_info(f"runner starting: strategy={args.strategy} symbol={args.symbol}")
 
         async with BingXUserDataStream(private_api) as user_stream:
