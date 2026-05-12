@@ -1,0 +1,83 @@
+{
+  "strategy": "us_session_breakout",
+  "candles_path": "data/candles/doge-usdt-15m.jsonl",
+  "is_days": 60,
+  "oos_days": 30,
+  "step_days": 30,
+  "windows": [
+    {
+      "window_index": 0,
+      "is_start_ms": 1763019900000,
+      "is_end_ms": 1768203900000,
+      "oos_start_ms": 1768203900000,
+      "oos_end_ms": 1770795900000,
+      "is_trades": 15,
+      "is_profit_factor": "1.1128",
+      "is_pnl_pct": "0.9843",
+      "is_sharpe": "1.2959",
+      "oos_trades": 9,
+      "oos_profit_factor": "2.2998",
+      "oos_pnl_pct": "4.3707",
+      "oos_sharpe": "13.8844"
+    },
+    {
+      "window_index": 1,
+      "is_start_ms": 1765611900000,
+      "is_end_ms": 1770795900000,
+      "oos_start_ms": 1770795900000,
+      "oos_end_ms": 1773387900000,
+      "is_trades": 17,
+      "is_profit_factor": "1.3868",
+      "is_pnl_pct": "3.3256",
+      "is_sharpe": "5.1657",
+      "oos_trades": 11,
+      "oos_profit_factor": "0.7627",
+      "oos_pnl_pct": "-1.7430",
+      "oos_sharpe": "-0.4282"
+    },
+    {
+      "window_index": 2,
+      "is_start_ms": 1768203900000,
+      "is_end_ms": 1773387900000,
+      "oos_start_ms": 1773387900000,
+      "oos_end_ms": 1775979900000,
+      "is_trades": 18,
+      "is_profit_factor": "1.3311",
+      "is_pnl_pct": "3.2877",
+      "is_sharpe": "4.9414",
+      "oos_trades": 4,
+      "oos_profit_factor": "0.2234",
+      "oos_pnl_pct": "-2.4552",
+      "oos_sharpe": "-10.3473"
+    }
+  ],
+  "aggregated": {
+    "windows": 3,
+    "is_profit_factor": {
+      "mean": 1.2769,
+      "std": 0.1448,
+      "min": 1.1128,
+      "max": 1.3868
+    },
+    "oos_profit_factor": {
+      "mean": 1.0953,
+      "std": 1.0774,
+      "min": 0.2234,
+      "max": 2.2998
+    },
+    "is_pnl_pct": {
+      "mean": 2.5325,
+      "std": 1.3409,
+      "min": 0.9843,
+      "max": 3.3256
+    },
+    "oos_pnl_pct": {
+      "mean": 0.0575,
+      "std": 3.7523,
+      "min": -2.4552,
+      "max": 4.3707
+    },
+    "oos_positive_windows": 1,
+    "total_oos_trades": 24
+  }
+}
