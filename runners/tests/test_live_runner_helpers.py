@@ -6,7 +6,11 @@ from decimal import Decimal
 
 import pytest
 
-from runners.live_runner import _decode_kline_message, _interval_to_ms
+from runners.live_runner import (
+    _build_kline_from_ws,
+    _extract_candle_dict,
+    _interval_to_ms,
+)
 
 
 def test_interval_to_ms_known() -> None:
@@ -22,50 +26,49 @@ def test_interval_to_ms_unknown_raises() -> None:
         _interval_to_ms("2.5m")
 
 
-def test_decode_kline_message_returns_none_for_open_candle() -> None:
-    """Если ``x: False`` (свеча не закрылась) — None."""
+def test_extract_candle_dict_returns_first_valid_entry() -> None:
+    """Реальный формат BingX WS (квирк §7 п.38): без `x` / `t`, только `T`."""
     payload = {
+        "code": 0,
+        "dataType": "BTC-USDT@kline_15m",
+        "s": "BTC-USDT",
         "data": [
             {
-                "t": 1_700_000_000_000,
-                "T": 1_700_000_900_000,
-                "o": "60000",
                 "c": "60100",
+                "o": "60000",
                 "h": "60200",
                 "l": "59900",
                 "v": "100",
-                "x": False,
-            }
-        ]
-    }
-    assert _decode_kline_message(payload) is None
-
-
-def test_decode_kline_message_returns_kline_for_closed() -> None:
-    payload = {
-        "data": [
-            {
-                "t": 1_700_000_000_000,
                 "T": 1_700_000_900_000,
-                "o": "60000",
-                "c": "60100",
-                "h": "60200",
-                "l": "59900",
-                "v": "100",
-                "x": True,
             }
-        ]
+        ],
     }
-    kline = _decode_kline_message(payload)
-    assert kline is not None
+    candle = _extract_candle_dict(payload)
+    assert candle is not None
+    assert candle["c"] == "60100"
+    assert candle["T"] == 1_700_000_900_000
+
+
+def test_extract_candle_dict_empty_or_invalid() -> None:
+    assert _extract_candle_dict({}) is None
+    assert _extract_candle_dict({"data": []}) is None
+    assert _extract_candle_dict({"data": "not-a-list"}) is None
+    # Без T — невалидно для нашей логики.
+    assert _extract_candle_dict({"data": [{"o": "1"}]}) is None
+
+
+def test_build_kline_from_ws() -> None:
+    candle_dict = {
+        "c": "60100",
+        "o": "60000",
+        "h": "60200",
+        "l": "59900",
+        "v": "100",
+        "T": 1_700_000_900_000,
+    }
+    kline = _build_kline_from_ws(candle_dict, open_time_ms=1_700_000_000_000)
     assert kline.open_time_ms == 1_700_000_000_000
     assert kline.open == Decimal("60000")
     assert kline.close == Decimal("60100")
     assert kline.high == Decimal("60200")
     assert kline.low == Decimal("59900")
-
-
-def test_decode_kline_message_empty_payload() -> None:
-    assert _decode_kline_message({}) is None
-    assert _decode_kline_message({"data": []}) is None
-    assert _decode_kline_message({"data": "not-a-list"}) is None
