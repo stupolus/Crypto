@@ -1,0 +1,146 @@
+# Crypto bot — Docker Compose для VPS с уже работающими сервисами
+# (например Hostinger VPS с Odoo + Postgres).
+#
+# Изоляция: отдельная сеть, resource limits, read-only root FS, non-root user.
+# Не пересекается с другими compose-стеками на хосте.
+#
+# Использование:
+#   cp .env.example /opt/crypto-bot/.env  # заполнить ключи
+#   cd /opt/crypto-bot
+#   docker compose -f scripts/deploy/docker-compose.yml up -d
+#
+# Логи:
+#   docker compose -f scripts/deploy/docker-compose.yml logs -f
+#
+# Стоп:
+#   docker compose -f scripts/deploy/docker-compose.yml down
+
+services:
+  # ── BTC runner ───────────────────────────────────────────────────────────
+  btc:
+    build:
+      context: ../..
+      dockerfile: scripts/deploy/Dockerfile
+    image: crypto-bot:latest
+    container_name: crypto-btc
+    restart: unless-stopped
+    env_file:
+      - /etc/crypto/.env
+    environment:
+      BINGX_SYMBOL: BTC-USDT
+      BINGX_INTERVAL: 15m
+      BINGX_STRATEGY: btc_breakout
+    volumes:
+      - crypto-data:/var/lib/crypto
+    networks:
+      - crypto-net
+    # Resource limits — даже при memory leak не уронит хост / Odoo.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+    # Безопасность.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Logging — ограничиваем чтобы не забить диск.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # ── ETH runner ───────────────────────────────────────────────────────────
+  eth:
+    image: crypto-bot:latest
+    container_name: crypto-eth
+    restart: unless-stopped
+    env_file:
+      - /etc/crypto/.env
+    environment:
+      BINGX_SYMBOL: ETH-USDT
+      BINGX_INTERVAL: 15m
+      BINGX_STRATEGY: btc_breakout
+    volumes:
+      - crypto-data:/var/lib/crypto
+    networks:
+      - crypto-net
+    depends_on:
+      - btc                       # чтобы образ был собран один раз
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # ── XRP runner ───────────────────────────────────────────────────────────
+  xrp:
+    image: crypto-bot:latest
+    container_name: crypto-xrp
+    restart: unless-stopped
+    env_file:
+      - /etc/crypto/.env
+    environment:
+      BINGX_SYMBOL: XRP-USDT
+      BINGX_INTERVAL: 15m
+      BINGX_STRATEGY: btc_breakout
+    volumes:
+      - crypto-data:/var/lib/crypto
+    networks:
+      - crypto-net
+    depends_on:
+      - btc
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+# ── Networks ───────────────────────────────────────────────────────────────
+# Отдельная bridge-сеть. Контейнеры не видят Odoo и наоборот.
+networks:
+  crypto-net:
+    driver: bridge
+    name: crypto-net
+
+# ── Volumes ────────────────────────────────────────────────────────────────
+# Один volume на всех — для journal/metrics.
+volumes:
+  crypto-data:
+    driver: local
+    name: crypto-data
