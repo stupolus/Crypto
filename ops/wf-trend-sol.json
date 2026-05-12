@@ -1,0 +1,173 @@
+{
+  "strategy": "trend_ema_4h",
+  "candles_path": "data/candles/sol-usdt-4h.jsonl",
+  "is_days": 60,
+  "oos_days": 30,
+  "step_days": 30,
+  "windows": [
+    {
+      "window_index": 0,
+      "is_start_ms": 1747483200000,
+      "is_end_ms": 1752667200000,
+      "oos_start_ms": 1752667200000,
+      "oos_end_ms": 1755259200000,
+      "is_trades": 3,
+      "is_profit_factor": "0.0000",
+      "is_pnl_pct": "-3.1673",
+      "is_sharpe": "-1336.7472",
+      "oos_trades": 7,
+      "oos_profit_factor": "1.2910",
+      "oos_pnl_pct": "0.9612",
+      "oos_sharpe": "1.2722"
+    },
+    {
+      "window_index": 1,
+      "is_start_ms": 1750075200000,
+      "is_end_ms": 1755259200000,
+      "oos_start_ms": 1755259200000,
+      "oos_end_ms": 1757851200000,
+      "is_trades": 13,
+      "is_profit_factor": "1.8318",
+      "is_pnl_pct": "4.6040",
+      "is_sharpe": "4.1134",
+      "oos_trades": 6,
+      "oos_profit_factor": "0.6757",
+      "oos_pnl_pct": "-1.3821",
+      "oos_sharpe": "-1.4116"
+    },
+    {
+      "window_index": 2,
+      "is_start_ms": 1752667200000,
+      "is_end_ms": 1757851200000,
+      "oos_start_ms": 1757851200000,
+      "oos_end_ms": 1760443200000,
+      "is_trades": 9,
+      "is_profit_factor": "0.6740",
+      "is_pnl_pct": "-2.0623",
+      "is_sharpe": "-5.0559",
+      "oos_trades": 7,
+      "oos_profit_factor": "0.6580",
+      "oos_pnl_pct": "-1.4722",
+      "oos_sharpe": "-5.3135"
+    },
+    {
+      "window_index": 3,
+      "is_start_ms": 1755259200000,
+      "is_end_ms": 1760443200000,
+      "oos_start_ms": 1760443200000,
+      "oos_end_ms": 1763035200000,
+      "is_trades": 10,
+      "is_profit_factor": "0.5767",
+      "is_pnl_pct": "-3.1491",
+      "is_sharpe": "-3.1505",
+      "oos_trades": 7,
+      "oos_profit_factor": "1.2896",
+      "oos_pnl_pct": "0.9530",
+      "oos_sharpe": "0.1806"
+    },
+    {
+      "window_index": 4,
+      "is_start_ms": 1757851200000,
+      "is_end_ms": 1763035200000,
+      "oos_start_ms": 1763035200000,
+      "oos_end_ms": 1765627200000,
+      "is_trades": 11,
+      "is_profit_factor": "0.5128",
+      "is_pnl_pct": "-4.0527",
+      "is_sharpe": "-5.5299",
+      "oos_trades": 3,
+      "oos_profit_factor": "0.0000",
+      "oos_pnl_pct": "-3.1442",
+      "oos_sharpe": "-68.1532"
+    },
+    {
+      "window_index": 5,
+      "is_start_ms": 1760443200000,
+      "is_end_ms": 1765627200000,
+      "oos_start_ms": 1765627200000,
+      "oos_end_ms": 1768219200000,
+      "is_trades": 13,
+      "is_profit_factor": "1.1556",
+      "is_pnl_pct": "1.1711",
+      "is_sharpe": "0.9445",
+      "oos_trades": 5,
+      "oos_profit_factor": "1.4831",
+      "oos_pnl_pct": "1.0543",
+      "oos_sharpe": "2.0307"
+    },
+    {
+      "window_index": 6,
+      "is_start_ms": 1763035200000,
+      "is_end_ms": 1768219200000,
+      "oos_start_ms": 1768219200000,
+      "oos_end_ms": 1770811200000,
+      "is_trades": 3,
+      "is_profit_factor": "0.0000",
+      "is_pnl_pct": "-3.1442",
+      "is_sharpe": "-68.1532",
+      "oos_trades": 4,
+      "oos_profit_factor": "3.4509",
+      "oos_pnl_pct": "2.6740",
+      "oos_sharpe": "10.3226"
+    },
+    {
+      "window_index": 7,
+      "is_start_ms": 1765627200000,
+      "is_end_ms": 1770811200000,
+      "oos_start_ms": 1770811200000,
+      "oos_end_ms": 1773403200000,
+      "is_trades": 11,
+      "is_profit_factor": "1.4690",
+      "is_pnl_pct": "2.5543",
+      "is_sharpe": "3.6846",
+      "oos_trades": 4,
+      "oos_profit_factor": "1.3523",
+      "oos_pnl_pct": "0.7520",
+      "oos_sharpe": "3.0354"
+    },
+    {
+      "window_index": 8,
+      "is_start_ms": 1768219200000,
+      "is_end_ms": 1773403200000,
+      "oos_start_ms": 1773403200000,
+      "oos_end_ms": 1775995200000,
+      "is_trades": 10,
+      "is_profit_factor": "3.0966",
+      "is_pnl_pct": "7.0411",
+      "is_sharpe": "8.2726",
+      "oos_trades": 4,
+      "oos_profit_factor": "0.5085",
+      "oos_pnl_pct": "-1.3629",
+      "oos_sharpe": "-6.0090"
+    }
+  ],
+  "aggregated": {
+    "windows": 9,
+    "is_profit_factor": {
+      "mean": 1.0352,
+      "std": 0.9902,
+      "min": 0.0,
+      "max": 3.0966
+    },
+    "oos_profit_factor": {
+      "mean": 1.1899,
+      "std": 0.9793,
+      "min": 0.0,
+      "max": 3.4509
+    },
+    "is_pnl_pct": {
+      "mean": -0.0228,
+      "std": 4.0184,
+      "min": -4.0527,
+      "max": 7.0411
+    },
+    "oos_pnl_pct": {
+      "mean": -0.1074,
+      "std": 1.8158,
+      "min": -3.1442,
+      "max": 2.674
+    },
+    "oos_positive_windows": 5,
+    "total_oos_trades": 47
+  }
+}
