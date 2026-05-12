@@ -181,23 +181,23 @@ class _KlineCloseDetector:
 
 
 def _build_alerter() -> Alerter:
-    """Выбрать alerter из env: Telegram (если оба ключа есть) или Stdout.
+    """Выбрать alerter: Telegram (если в .env есть оба ключа) или Stdout.
 
-    Переменные окружения:
-    - TELEGRAM_BOT_TOKEN — токен бота (@BotFather)
-    - TELEGRAM_CHAT_ID — ID чата (через getUpdates)
+    Источник: ``core.alerts.settings.TelegramSettings`` — pydantic-settings
+    автоматически читает .env (os.getenv этого НЕ делает, баг до 2026-05-12).
 
     Если оба заданы — TelegramAlerter, иначе StdoutAlerter.
     Stdout всегда работает (логи + journald на VPS).
     """
-    import os
+    from core.alerts.settings import TelegramSettings
 
-    bot = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat = os.getenv("TELEGRAM_CHAT_ID")
-    if bot and chat:
-        logger.info("Alerter: Telegram (chat=%s)", chat[:4] + "...")
-        return TelegramAlerter(bot_token=bot, chat_id=chat)
-    logger.info("Alerter: Stdout (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы)")
+    settings = TelegramSettings()
+    if settings.configured:
+        # Тип-нарратор для mypy: configured=True означает оба не None.
+        assert settings.chat_id is not None
+        logger.info("Alerter: Telegram (chat=%s)", settings.chat_id[:4] + "...")
+        return TelegramAlerter(bot_token=settings.bot_token, chat_id=settings.chat_id)
+    logger.info("Alerter: Stdout (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env)")
     return StdoutAlerter()
 
 
