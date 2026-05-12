@@ -151,6 +151,35 @@ def _build_kline_from_ws(candle: dict[str, Any], open_time_ms: int) -> Kline:
     )
 
 
+class _KlineCloseDetector:
+    """Детектор закрытия свечи по смене ``T`` (close_time) в WS-потоке BingX.
+
+    Чистая state-машина без I/O. На каждое сообщение возвращает либо ``None``
+    (свеча ещё открыта или невалидный payload), либо ``Kline`` закрывшейся
+    свечи. Вынесено отдельно от ``_candle_loop`` чтобы покрыть тестами без WS.
+
+    См. квирк §7 п.38 в plans/01: формат БЕЗ ``x``/``t``, только ``T``.
+    """
+
+    def __init__(self, interval_ms: int) -> None:
+        self._interval_ms = interval_ms
+        self._last_T: int | None = None
+        self._last_snapshot: dict[str, Any] | None = None
+
+    def feed(self, message: dict[str, Any]) -> Kline | None:
+        candle_dict = _extract_candle_dict(message)
+        if candle_dict is None:
+            return None
+        current_T = int(candle_dict["T"])
+        closed: Kline | None = None
+        if self._last_T is not None and current_T != self._last_T and self._last_snapshot:
+            open_time_ms = self._last_T - self._interval_ms
+            closed = _build_kline_from_ws(self._last_snapshot, open_time_ms)
+        self._last_T = current_T
+        self._last_snapshot = dict(candle_dict)
+        return closed
+
+
 async def _warm_history(
     public_api: PublicAPI, symbol: str, interval: str, count: int
 ) -> list[Kline]:
@@ -373,8 +402,7 @@ async def _candle_loop(
     """
     interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
-    last_T: int | None = None
-    last_snapshot: dict[str, Any] | None = None
+    detector = _KlineCloseDetector(interval_ms)
     async with BingXMarketWebSocket() as ws:
         iterator = await ws.subscribe(channel)
         async for msg in iterator:
@@ -382,33 +410,22 @@ async def _candle_loop(
                 return
             if not isinstance(msg, dict):
                 continue
-            candle_dict = _extract_candle_dict(dict(msg))
-            if candle_dict is None:
+            try:
+                closed = detector.feed(dict(msg))
+            except Exception:
+                logger.exception("failed to detect closed kline")
                 continue
-            current_T = int(candle_dict["T"])
-            # Если `T` поменялся — предыдущая свеча закрылась.
-            if last_T is not None and current_T != last_T and last_snapshot:
-                # open_time закрывшейся = last_T - interval_ms.
-                # close_time = last_T.
-                open_time_ms = last_T - interval_ms
-                try:
-                    closed = _build_kline_from_ws(last_snapshot, open_time_ms)
-                except Exception:
-                    logger.exception("failed to build closed kline")
-                    last_T = current_T
-                    last_snapshot = dict(candle_dict)
-                    continue
-                logger.info(
-                    "candle closed: %s o=%s c=%s h=%s l=%s",
-                    args.symbol,
-                    closed.open,
-                    closed.close,
-                    closed.high,
-                    closed.low,
-                )
-                await _handle_closed_candle(closed, args, strategy, state, private_api, alerter)
-            last_T = current_T
-            last_snapshot = dict(candle_dict)
+            if closed is None:
+                continue
+            logger.info(
+                "candle closed: %s o=%s c=%s h=%s l=%s",
+                args.symbol,
+                closed.open,
+                closed.close,
+                closed.high,
+                closed.low,
+            )
+            await _handle_closed_candle(closed, args, strategy, state, private_api, alerter)
 
 
 async def _handle_closed_candle(
