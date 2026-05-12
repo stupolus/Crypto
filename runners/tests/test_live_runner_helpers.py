@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -14,9 +15,9 @@ from runners.live_runner import (
 )
 
 
-def _ws_msg(close_T: int, **fields: str) -> dict:
+def _ws_msg(close_T: int, **fields: str) -> dict[str, Any]:
     """Хелпер: WS-сообщение BingX в реальном формате (без `x`/`t`)."""
-    candle = {"o": "100", "h": "110", "l": "90", "c": "105", "v": "10"}
+    candle: dict[str, Any] = {"o": "100", "h": "110", "l": "90", "c": "105", "v": "10"}
     candle.update(fields)
     candle["T"] = close_T
     return {"code": 0, "dataType": "BTC-USDT@kline_15m", "s": "BTC-USDT", "data": [candle]}
