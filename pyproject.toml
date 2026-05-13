@@ -86,6 +86,7 @@ testpaths = [
     "core/backtest/tests",
     "core/risk/tests",
     "core/signals/tests",
+    "parsers/coinglass/tests",
     "parsers/macro/tests",
     "runners/tests",
     "scripts/tests",
