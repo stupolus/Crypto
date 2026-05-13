@@ -28,6 +28,7 @@ from core.agents.base import (
 )
 from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
+from core.agents.sentiment_analyst import SentimentAnalystAgent
 
 __all__ = [
     "AgentError",
@@ -38,4 +39,5 @@ __all__ = [
     "BaseAgent",
     "MarketAnalystAgent",
     "MockAgent",
+    "SentimentAnalystAgent",
 ]
