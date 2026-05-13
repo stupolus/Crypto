@@ -26,6 +26,7 @@ from core.agents.base import (
     AgentResponse,
     BaseAgent,
 )
+from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
 from core.agents.risk_overseer import RiskOverseerAgent
@@ -38,6 +39,7 @@ __all__ = [
     "AgentResponse",
     "AnthropicAgent",
     "BaseAgent",
+    "MacroAnalystAgent",
     "MarketAnalystAgent",
     "MockAgent",
     "RiskOverseerAgent",
