@@ -10,5 +10,6 @@
 """
 
 from parsers.macro.models import MacroSnapshot, YfinanceQuote
+from parsers.macro.yfinance_adapter import YahooFetcher, YfinanceAdapter
 
-__all__ = ["MacroSnapshot", "YfinanceQuote"]
+__all__ = ["MacroSnapshot", "YahooFetcher", "YfinanceAdapter", "YfinanceQuote"]
