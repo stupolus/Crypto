@@ -264,6 +264,12 @@ async def run(args: argparse.Namespace) -> None:
                 _user_events_loop(user_stream, strategy, state, journal),
                 name="live-user-stream",
             )
+            heartbeat_task: asyncio.Task[None] | None = None
+            if args.heartbeat_file:
+                heartbeat_task = asyncio.create_task(
+                    _heartbeat_loop(Path(args.heartbeat_file), stop_event),
+                    name="live-heartbeat",
+                )
 
             try:
                 await _candle_loop(
@@ -279,11 +285,36 @@ async def run(args: argparse.Namespace) -> None:
                 user_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await user_task
+                if heartbeat_task is not None:
+                    heartbeat_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await heartbeat_task
                 await alerter.send_info(
                     f"runner stopped: strategy={args.strategy} symbol={args.symbol}"
                 )
 
     logger.info("live runner stopped cleanly")
+
+
+async def _heartbeat_loop(
+    heartbeat_path: Path, stop_event: asyncio.Event, interval_s: float = 30.0
+) -> None:
+    """Периодически обновляет mtime файла — для Docker healthcheck.
+
+    Healthcheck в Dockerfile проверяет что mtime файла < N минут назад.
+    Если runner жив — touch обновляет mtime каждые ``interval_s``.
+    Если runner повис — mtime устаревает → healthcheck помечает unhealthy.
+    """
+    heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+    while not stop_event.is_set():
+        try:
+            heartbeat_path.touch(exist_ok=True)
+        except OSError as e:
+            logger.warning("heartbeat touch failed: %s", e)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+        except TimeoutError:
+            continue
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:
@@ -527,6 +558,11 @@ def main() -> None:
     )
     parser.add_argument("--journal-db", default="ops/live-orders.sqlite")
     parser.add_argument("--metrics-file", default="ops/live-metrics.jsonl")
+    parser.add_argument(
+        "--heartbeat-file",
+        default=None,
+        help="Путь к heartbeat-файлу (touch'ается каждые 30s). Для Docker healthcheck.",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 
