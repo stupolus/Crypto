@@ -57,10 +57,12 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
-# Healthcheck — runner должен периодически писать в metrics.jsonl.
-# Если файл не обновляется >5 мин — что-то не так.
-HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
-    CMD test "$(find /var/lib/crypto/$BINGX_SYMBOL-metrics.jsonl -mmin -5 2>/dev/null | wc -l)" -ge 1 || exit 1
+# Healthcheck — runner async-таск раз в 30s touch'ает heartbeat файл.
+# Если файл не обновлялся >2 мин — runner повис или умер, helath = fail.
+# (Раньше проверяли metrics.jsonl — но он пишется только при ордерах,
+#  поэтому в "тихие" дни без сделок healthcheck ложно реджектил.)
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=3 \
+    CMD test "$(find /var/lib/crypto/$BINGX_SYMBOL.heartbeat -mmin -2 2>/dev/null | wc -l)" -ge 1 || exit 1
 
 # По умолчанию BTC; перекрывается через docker-compose env / args.
 ENV BINGX_SYMBOL=BTC-USDT \
@@ -74,4 +76,5 @@ CMD ["sh", "-c", "exec python -m runners.live_runner \
     --warmup-candles 100 \
     --metrics-file /var/lib/crypto/${BINGX_SYMBOL}-metrics.jsonl \
     --journal-db /var/lib/crypto/${BINGX_SYMBOL}.sqlite \
+    --heartbeat-file /var/lib/crypto/${BINGX_SYMBOL}.heartbeat \
     --log-level INFO"]
