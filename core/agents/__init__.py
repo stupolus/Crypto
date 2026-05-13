@@ -31,12 +31,14 @@ from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
 from core.agents.risk_overseer import RiskOverseerAgent
 from core.agents.sentiment_analyst import SentimentAnalystAgent
+from core.agents.team import AgentTeam, TeamDecision
 
 __all__ = [
     "AgentError",
     "AgentExecutionError",
     "AgentRequest",
     "AgentResponse",
+    "AgentTeam",
     "AnthropicAgent",
     "BaseAgent",
     "MacroAnalystAgent",
@@ -44,4 +46,5 @@ __all__ = [
     "MockAgent",
     "RiskOverseerAgent",
     "SentimentAnalystAgent",
+    "TeamDecision",
 ]
