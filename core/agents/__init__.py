@@ -27,6 +27,7 @@ from core.agents.base import (
     BaseAgent,
 )
 from core.agents.coordinator import CoordinatorAgent
+from core.agents.factory import AgentFactoryError, build_default_team, build_mock_team
 from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
@@ -37,6 +38,7 @@ from core.agents.team import AgentTeam, TeamDecision
 __all__ = [
     "AgentError",
     "AgentExecutionError",
+    "AgentFactoryError",
     "AgentRequest",
     "AgentResponse",
     "AgentTeam",
@@ -49,4 +51,6 @@ __all__ = [
     "RiskOverseerAgent",
     "SentimentAnalystAgent",
     "TeamDecision",
+    "build_default_team",
+    "build_mock_team",
 ]
