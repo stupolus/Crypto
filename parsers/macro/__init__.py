@@ -9,7 +9,16 @@
 для подачи в Macro Analyst.
 """
 
+from parsers.macro.fred_adapter import FREDAdapter, FREDFetcher, FREDSnapshot
 from parsers.macro.models import MacroSnapshot, YfinanceQuote
 from parsers.macro.yfinance_adapter import YahooFetcher, YfinanceAdapter
 
-__all__ = ["MacroSnapshot", "YahooFetcher", "YfinanceAdapter", "YfinanceQuote"]
+__all__ = [
+    "FREDAdapter",
+    "FREDFetcher",
+    "FREDSnapshot",
+    "MacroSnapshot",
+    "YahooFetcher",
+    "YfinanceAdapter",
+    "YfinanceQuote",
+]
