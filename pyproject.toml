@@ -81,14 +81,16 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = [
     "adapters/bingx/tests",
-    "core/risk/tests",
-    "core/backtest/tests",
-    "core/signals/tests",
+    "core/agents/tests",
     "core/alerts/tests",
-    "strategies/btc_breakout/tests",
-    "strategies/us_session_breakout/tests",
-    "strategies/trend_ema_4h/tests",
+    "core/backtest/tests",
+    "core/risk/tests",
+    "core/signals/tests",
     "runners/tests",
+    "scripts/tests",
+    "strategies/btc_breakout/tests",
+    "strategies/trend_ema_4h/tests",
+    "strategies/us_session_breakout/tests",
 ]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
