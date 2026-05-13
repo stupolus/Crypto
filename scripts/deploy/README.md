@@ -1,91 +1,65 @@
-# Деплой на VPS
+# Crypto Bot Deploy
 
-См. полный план: [`plans/16-деплой-24-7.md`](../../plans/16-деплой-24-7.md).
+Два варианта деплоя:
 
-## Быстрый старт (40 минут от пустого VPS)
+## Вариант A: Docker compose (рекомендуется для VPS с другими сервисами)
 
-### 1. На своём компе
+Используется когда на VPS уже работает что-то ещё (например, Hostinger VPS с Odoo).
+Контейнерная изоляция: отдельная сеть, resource limits (0.5 CPU + 512MB RAM на контейнер),
+read-only root FS, non-root user, drop ALL capabilities.
 
 ```bash
-# Подключиться к VPS:
-ssh root@<твой-ip>
-
-# Если первый раз — провайдер должен был дать пароль или ты сам добавил SSH-ключ.
+ssh root@<your-vps-ip>
+wget https://raw.githubusercontent.com/stupolus/Crypto/main/scripts/deploy/deploy-docker.sh
+sudo bash deploy-docker.sh
+# Заполнить /etc/crypto/.env (скрипт скажет)
+sudo bash deploy-docker.sh  # повторно
 ```
 
-### 2. На VPS (под root через sudo)
+Файлы:
+- `Dockerfile` — multi-stage slim build, non-root user, healthcheck
+- `docker-compose.yml` — 3 контейнера (BTC/ETH/XRP) с лимитами и изоляцией
+- `.env.example` — шаблон конфига
+- `deploy-docker.sh` — установщик
+
+## Вариант B: systemd на чистом VPS (без Docker)
+
+Используется когда на VPS только наш бот, без других сервисов.
+См. `install.sh` и `crypto-runner@.service`.
 
 ```bash
-# Скачать install.sh:
+ssh root@<your-vps-ip>
 wget https://raw.githubusercontent.com/stupolus/Crypto/main/scripts/deploy/install.sh
-
-# Запустить:
 sudo bash install.sh
 ```
 
-Скрипт идемпотентный — можно запускать повторно для обновления.
+См. полный план: `plans/16-деплой-24-7.md`.
 
-### 3. Заполнить .env
+## Backup перед деплоем
 
+Если на VPS уже есть Odoo / другие сервисы:
 ```bash
-sudo nano /etc/crypto/.env
+# Бэкап Odoo volume
+docker run --rm -v odoo_data:/data -v $(pwd):/backup alpine tar czf /backup/odoo-backup-$(date +%Y%m%d).tar.gz /data
 ```
 
-Минимум:
-- `BINGX_VST_API_KEY` и `BINGX_VST_API_SECRET` (для D3 demo)
-
-Рекомендую:
-- `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` (для алертов на телефон)
-
-### 4. Включить раннеры
+## Стоп / откат
 
 ```bash
-sudo systemctl enable --now crypto-runner@BTC-USDT
-sudo systemctl enable --now crypto-runner@ETH-USDT
-sudo systemctl enable --now crypto-runner@XRP-USDT
-```
+# Docker:
+cd /opt/crypto-bot
+docker compose -f scripts/deploy/docker-compose.yml down
 
-### 5. Проверка
-
-```bash
-# Статус каждого раннера:
-sudo systemctl status crypto-runner@BTC-USDT
-
-# Лайв-лог всех раннеров:
-sudo journalctl -u 'crypto-runner@*' -f
-
-# Через 15 минут — близкие events должны прилететь:
-sudo journalctl -u crypto-runner@BTC-USDT | grep "candle closed"
-```
-
-## Обновление кода
-
-```bash
-# На VPS:
-sudo -u crypto git -C /opt/crypto pull origin main
-sudo -u crypto /opt/crypto/.venv/bin/pip install -e /opt/crypto[dev]
-sudo systemctl restart 'crypto-runner@*'
-```
-
-## Откат
-
-```bash
-# Stop всё:
+# systemd:
 sudo systemctl stop 'crypto-runner@*'
 sudo systemctl disable 'crypto-runner@*'
-
-# Удалить (опасно — journal/metrics удалятся):
-sudo rm -rf /var/lib/crypto /opt/crypto /etc/crypto
-sudo userdel -r crypto
-sudo rm /etc/systemd/system/crypto-runner@.service
-sudo rm /etc/logrotate.d/crypto
 ```
 
 ## Безопасность
 
-- `.env` `chmod 600`, owner `root:crypto` — только crypto-user читает.
-- `crypto` пользователь без sudo, не может править systemd.
-- ufw: открыт только SSH (22). Порт 8080 (healthz) — открывается отдельно по IP UptimeRobot.
-- fail2ban защищает SSH.
-- systemd unit: `NoNewPrivileges`, `ProtectSystem=strict`, `MemoryDenyWriteExecute`.
-- BingX API ключи — **только торговые** (без Withdraw!), IP whitelist на IP VPS.
+- `.env` `chmod 600`, владелец `root` (Docker монтирует read-only)
+- Контейнеры non-root (`crypto` user, UID не 0)
+- `cap_drop: ALL` — никаких Linux capabilities
+- `read_only: true` — root FS только для чтения
+- `no-new-privileges: true` — sudo внутри контейнера невозможен
+- Отдельная Docker network — не видим Odoo и наоборот
