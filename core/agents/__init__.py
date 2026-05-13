@@ -27,6 +27,13 @@ from core.agents.base import (
     BaseAgent,
 )
 from core.agents.coordinator import CoordinatorAgent
+from core.agents.evaluate import (
+    MacroContextData,
+    MarketContextData,
+    RunnerStateSnapshot,
+    SentimentContextData,
+    evaluate_with_team,
+)
 from core.agents.factory import AgentFactoryError, build_default_team, build_mock_team
 from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
@@ -47,13 +54,18 @@ __all__ = [
     "BaseAgent",
     "CoordinatorAgent",
     "MacroAnalystAgent",
+    "MacroContextData",
     "MarketAnalystAgent",
+    "MarketContextData",
     "MockAgent",
     "RiskOverseerAgent",
+    "RunnerStateSnapshot",
     "SentimentAnalystAgent",
+    "SentimentContextData",
     "SignalAction",
     "SignalCandidate",
     "TeamDecision",
     "build_default_team",
     "build_mock_team",
+    "evaluate_with_team",
 ]
