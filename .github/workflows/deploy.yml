@@ -1,0 +1,68 @@
+name: Deploy to VPS
+
+# Запускается на каждый push в main (т.е. после merge PR).
+# SSHит на Hostinger VPS, делает git pull + docker compose up -d.
+#
+# Требует GitHub repo secrets:
+#   - VPS_HOST     — IP или hostname (например 187.124.41.13)
+#   - VPS_USER     — обычно root
+#   - VPS_SSH_KEY  — private SSH key (whole content of id_ed25519, see scripts/deploy/auto-deploy-setup.md)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # позволяет руками запустить из Actions UI
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # не отменяем активный деплой, пусть отработает
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Защита: только если VPS_HOST secret задан. Без секретов workflow no-op.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Установка SSH-ключа в агент
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Доверяем hostkey VPS (избегаем StrictHostKeyChecking prompt)
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull + rebuild + restart
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -o BatchMode=yes "$VPS_USER@$VPS_HOST" <<'REMOTE'
+            set -euo pipefail
+            cd /opt/crypto-bot
+            echo "==> git pull"
+            git pull --ff-only origin main
+            echo "==> docker compose build"
+            docker compose -f scripts/deploy/docker-compose.yml build
+            echo "==> docker compose up -d"
+            docker compose -f scripts/deploy/docker-compose.yml up -d
+            echo "==> waiting 60s for healthcheck"
+            sleep 60
+            echo "==> final status"
+            docker compose -f scripts/deploy/docker-compose.yml ps
+          REMOTE
+
+      - name: Telegram notify on failure
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -H 'Content-Type: application/json' \
+              -d "{\"chat_id\":\"$CHAT_ID\",\"text\":\"🚨 [CRITICAL] Auto-deploy на VPS упал. Workflow: ${{ github.run_id }}. Smотри логи в Actions.\"}"
+          fi
