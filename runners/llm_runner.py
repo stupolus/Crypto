@@ -55,6 +55,7 @@ from core.agents.market_context_builder import MarketContextBuilder
 from core.agents.team import AgentTeam
 from core.alerts import Alerter
 from core.backtest.models import StrategyContext
+from core.postmortem import DecisionContext, TradeOutcomeLogger
 from core.risk import RiskEngine
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
@@ -95,6 +96,47 @@ class _NoopFREDFetcher:
         return {}
 
 
+def _build_decision_context(
+    *,
+    trade_id: str,
+    approved: Any,
+    gate_result: Any,
+    candle: Kline,
+) -> DecisionContext:
+    """Собрать DecisionContext для TradeOutcomeLogger.record_entry.
+
+    Берём:
+    - trade_id из BingX order_id (после успешного place_order)
+    - entry_price из approved.price (LIMIT) или candle.close (MARKET)
+    - size из approved.quantity
+    - LLM payload'ы из gate_result.decision.subagent_payloads + coordinator
+    - signal_candidate из gate_result.decision (signal context был передан)
+    """
+    entry_price = approved.price if approved.price is not None else candle.close
+    payloads = gate_result.decision.subagent_payloads
+    coordinator = gate_result.decision.coordinator_payload
+    return DecisionContext(
+        trade_id=trade_id,
+        symbol=approved.symbol,
+        side=approved.side,
+        entry_time_ms=int(time.time() * 1000),
+        entry_price=entry_price,
+        size=approved.quantity,
+        signal_candidate={
+            "symbol": approved.symbol,
+            "action": approved.side,
+            "proposed_entry": str(entry_price),
+            "proposed_sl": str(approved.attached_stop_loss),
+        },
+        market_analyst=payloads.get("market", {}),
+        sentiment_analyst=payloads.get("sentiment", {}),
+        risk_overseer=payloads.get("risk", {}),
+        macro_analyst=payloads.get("macro", {}),
+        coordinator=coordinator,
+        latency_decision_ms=gate_result.decision.total_latency_ms,
+    )
+
+
 def _build_runner_state_snapshot(state: RunnerState) -> RunnerStateSnapshot:
     """Конвертировать RunnerState (live_runner) → RunnerStateSnapshot (Layer 3)."""
     open_positions: tuple[dict[str, Any], ...] = ()
@@ -127,11 +169,14 @@ async def _handle_closed_candle_with_llm(
     team: AgentTeam,
     macro_builder: MacroContextBuilder,
     market_builder: MarketContextBuilder,
+    outcome_logger: TradeOutcomeLogger | None = None,
 ) -> None:
     """Закрытая свеча → strategy → llm_gate → place_order.
 
     Расширение ``_handle_closed_candle`` из live_runner: перед отправкой
-    OrderRequest на биржу прогоняем через AgentTeam.
+    OrderRequest на биржу прогоняем через AgentTeam. После APPROVED +
+    успешного place_order сохраняем DecisionContext в Layer 6 journal
+    (если outcome_logger передан).
     """
     state.candles_history.append(candle)
     max_history = max(args.warmup_candles * 2, 500)
@@ -219,6 +264,7 @@ async def _handle_closed_candle_with_llm(
     except OrderRejected as exc:
         logger.error("OrderRejected: %s", exc)
         await alerter.send_critical(f"OrderRejected on {approved.symbol}: {exc}")
+        return
     except AuthError as exc:
         logger.exception("AuthError")
         await alerter.send_critical(f"AuthError on {approved.symbol}: {exc}. Stopping runner.")
@@ -226,6 +272,21 @@ async def _handle_closed_candle_with_llm(
     except Exception as exc:
         logger.exception("place_order failed")
         await alerter.send_warning(f"place_order failed on {approved.symbol}: {exc}")
+        return
+
+    # Layer 6 capture: записываем DecisionContext только если ордер реально размещён.
+    if outcome_logger is not None:
+        try:
+            decision_ctx = _build_decision_context(
+                trade_id=ack.order_id,
+                approved=approved,
+                gate_result=gate_result,
+                candle=candle,
+            )
+            outcome_logger.record_entry(decision_ctx)
+        except Exception as exc:
+            # Layer 6 ошибка не должна блокировать торговлю.
+            logger.exception("outcome_logger.record_entry failed: %s", exc)
 
 
 async def _candle_loop_llm(
@@ -239,6 +300,7 @@ async def _candle_loop_llm(
     team: AgentTeam,
     macro_builder: MacroContextBuilder,
     market_builder: MarketContextBuilder,
+    outcome_logger: TradeOutcomeLogger | None,
 ) -> None:
     interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
@@ -268,6 +330,7 @@ async def _candle_loop_llm(
                 team,
                 macro_builder,
                 market_builder,
+                outcome_logger,
             )
 
 
@@ -316,6 +379,11 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
     macro_builder = MacroContextBuilder(yf, fred)
     market_builder = MarketContextBuilder()
 
+    outcome_logger: TradeOutcomeLogger | None = None
+    if args.outcomes_db:
+        outcome_logger = TradeOutcomeLogger(Path(args.outcomes_db))
+        logger.info("Layer 6 outcome logger enabled: %s", args.outcomes_db)
+
     async with BingXClient(settings=settings) as client:
         public_api = PublicAPI(client, client.config)
         private_api = PrivateAPI(client, journal=journal, metrics=metrics)
@@ -359,6 +427,7 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     team=team,
                     macro_builder=macro_builder,
                     market_builder=market_builder,
+                    outcome_logger=outcome_logger,
                 )
             finally:
                 stop_event.set()
@@ -392,6 +461,11 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--journal-db", default="ops/llm-orders.sqlite")
     parser.add_argument("--metrics-file", default="ops/llm-metrics.jsonl")
+    parser.add_argument(
+        "--outcomes-db",
+        default="ops/llm-outcomes.sqlite",
+        help="Путь к Layer 6 TradeOutcomeLogger БД. Пустая строка отключает.",
+    )
     parser.add_argument("--heartbeat-file", default=None)
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
