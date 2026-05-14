@@ -88,6 +88,21 @@ export interface NewsItem {
   summary: string;
 }
 
+export interface CandleBar {
+  time: number; // unix seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+export interface CandlesResponse {
+  symbol: string;
+  interval: string;
+  candles: CandleBar[];
+}
+
 const API_BASE = ""; // same origin in prod, vite proxy in dev
 
 async function json<T>(path: string): Promise<T> {
@@ -114,4 +129,8 @@ export const api = {
   trade: (id: string) => json<TradeDetail>(`/api/trades/${encodeURIComponent(id)}`),
   equity: (limit = 100) => json<{ points: EquityPoint[] }>(`/api/equity?limit=${limit}`),
   news: (limit = 30) => json<{ items: NewsItem[] }>(`/api/news?limit=${limit}`),
+  candles: (symbol = "BTC-USDT", interval = "15m", limit = 100) =>
+    json<CandlesResponse>(
+      `/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`,
+    ),
 };
