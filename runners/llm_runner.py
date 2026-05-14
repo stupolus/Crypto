@@ -217,13 +217,14 @@ async def _handle_closed_candle_with_llm(
         request.attached_stop_loss,
     )
 
-    # Layer 6 feedback: логируем past mistakes на этом символе.
-    # Реальная инъекция в Coordinator — отдельный PR с обновлением промпта.
+    # Layer 6 feedback: собираем past mistakes для injection в Coordinator.
+    past_mistakes_text = ""
     if past_mistakes_retriever is not None:
         try:
             similar = past_mistakes_retriever.find_similar(symbol=request.symbol, limit=3)
+            past_mistakes_text = summaries_to_prompt_text(similar)
             if similar:
-                logger.info("past mistakes context:\n%s", summaries_to_prompt_text(similar))
+                logger.info("past mistakes context:\n%s", past_mistakes_text)
             else:
                 logger.debug("past mistakes: нет похожих на %s", request.symbol)
         except Exception:
@@ -252,6 +253,7 @@ async def _handle_closed_candle_with_llm(
             market_data=market_data,
             sentiment_data=sentiment_data,
             macro_data=macro_data,
+            past_mistakes=past_mistakes_text,
         )
     except Exception as exc:
         logger.exception("llm_gate failed — defensively skipping signal")
