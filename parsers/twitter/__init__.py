@@ -9,6 +9,7 @@
 
 from parsers.twitter.aggregator import SentimentAggregator
 from parsers.twitter.apify_scraper import ApifyScraperError, ApifyTwitterScraper
+from parsers.twitter.context_builder import SentimentContextBuilder
 from parsers.twitter.groq_client import (
     GroqClient,
     GroqError,
@@ -22,6 +23,7 @@ __all__ = [
     "GroqClient",
     "GroqError",
     "SentimentAggregator",
+    "SentimentContextBuilder",
     "SentimentSnapshot",
     "Tweet",
     "TweetClassification",
