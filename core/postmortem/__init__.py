@@ -26,6 +26,11 @@ from core.postmortem.models import (
     OrderSide,
     TradeOutcome,
 )
+from core.postmortem.past_mistakes import (
+    PastMistakeSummary,
+    PastMistakesRetriever,
+    summaries_to_prompt_text,
+)
 
 __all__ = [
     "DecisionContext",
@@ -34,10 +39,13 @@ __all__ = [
     "MistakeClassification",
     "MistakeClassifierAgent",
     "OrderSide",
+    "PastMistakeSummary",
+    "PastMistakesRetriever",
     "TradeOutcome",
     "TradeOutcomeLogger",
     "build_mistake_markdown",
     "mistake_filename",
+    "summaries_to_prompt_text",
     "trade_outcome_to_context",
     "write_mistake_document",
 ]
