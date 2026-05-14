@@ -38,6 +38,7 @@ from core.agents.factory import AgentFactoryError, build_default_team, build_moc
 from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
+from core.agents.order_request_bridge import build_signal_candidate
 from core.agents.risk_overseer import RiskOverseerAgent
 from core.agents.sentiment_analyst import SentimentAnalystAgent
 from core.agents.signal import SignalAction, SignalCandidate
@@ -67,5 +68,6 @@ __all__ = [
     "TeamDecision",
     "build_default_team",
     "build_mock_team",
+    "build_signal_candidate",
     "evaluate_with_team",
 ]
