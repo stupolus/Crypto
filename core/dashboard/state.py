@@ -1,0 +1,367 @@
+"""DashboardState — read-only сборщик данных для API.
+
+Все данные тащим из существующих источников:
+- TradeOutcomeLogger SQLite — trades + LLM payloads
+- HaltFlag file — emergency halt status
+- Heartbeat file (если runner с --heartbeat-file) — proof of life
+
+В первой версии BingX live данные (current position, equity) НЕ
+запрашиваем — это требует API keys в dashboard процессе, что усложняет
+безопасность. Live equity подтянем через runner → периодический snapshot
+в SQLite (отдельный PR).
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Iterable
+from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+
+from core.postmortem.logger import TradeOutcomeLogger
+from core.postmortem.models import TradeOutcome
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class HealthInfo:
+    status: str  # "ok" | "stale" (heartbeat too old) | "halted"
+    uptime_s: float | None  # время с последнего heartbeat touch
+    runner_heartbeat_age_s: float | None
+    halt_active: bool
+    halt_reason: dict[str, str] | None
+
+
+@dataclass(frozen=True)
+class TradeSummary:
+    """Слепок одной TradeOutcome для UI list view."""
+
+    trade_id: str
+    symbol: str
+    side: str
+    entry_time_ms: int
+    entry_price: str
+    exit_time_ms: int | None
+    exit_price: str | None
+    pnl_pct: str | None
+    exit_reason: str | None
+    holding_time_min: int | None
+    is_closed: bool
+    is_win: bool
+    is_loss: bool
+
+
+@dataclass(frozen=True)
+class AgentSnapshot:
+    """Последний decision одного из 5 LLM-агентов."""
+
+    name: str  # "market_analyst" | "sentiment_analyst" | "risk_overseer" | "macro_analyst" | "coordinator"
+    last_payload: dict[str, Any]
+    last_trade_id: str
+    last_decision_at_ms: int
+
+
+class DashboardState:
+    """Read-only фасад над outcomes journal + filesystem state.
+
+    Используется FastAPI route'ами. Все методы быстрые (SQLite + filesystem).
+    """
+
+    def __init__(
+        self,
+        *,
+        outcomes_db: Path | str,
+        halt_flag_file: Path | str | None = None,
+        heartbeat_file: Path | str | None = None,
+        runner_start_ts: float | None = None,
+    ) -> None:
+        self._outcomes_db = Path(outcomes_db)
+        self._halt_flag_file = Path(halt_flag_file) if halt_flag_file else None
+        self._heartbeat_file = Path(heartbeat_file) if heartbeat_file else None
+        self._start_ts = runner_start_ts or time.time()
+
+    # ── Health ──────────────────────────────────────────────────────────────
+
+    def health(self, *, heartbeat_max_age_s: float = 120.0) -> HealthInfo:
+        halt_active = False
+        halt_reason: dict[str, str] | None = None
+        if self._halt_flag_file is not None and self._halt_flag_file.exists():
+            halt_active = True
+            try:
+                halt_reason = _parse_halt_file(self._halt_flag_file)
+            except Exception:
+                logger.debug("could not parse halt file %s", self._halt_flag_file)
+
+        hb_age: float | None = None
+        if self._heartbeat_file is not None and self._heartbeat_file.exists():
+            hb_age = time.time() - self._heartbeat_file.stat().st_mtime
+
+        status: str
+        if halt_active:
+            status = "halted"
+        elif hb_age is not None and hb_age > heartbeat_max_age_s:
+            status = "stale"
+        else:
+            status = "ok"
+
+        return HealthInfo(
+            status=status,
+            uptime_s=time.time() - self._start_ts,
+            runner_heartbeat_age_s=hb_age,
+            halt_active=halt_active,
+            halt_reason=halt_reason,
+        )
+
+    # ── Trades ──────────────────────────────────────────────────────────────
+
+    def trades(
+        self,
+        *,
+        only_open: bool = False,
+        only_closed: bool = False,
+        limit: int = 50,
+    ) -> list[TradeSummary]:
+        if only_open and only_closed:
+            raise ValueError("only_open and only_closed are mutually exclusive")
+        outcomes = self._all_outcomes_desc()
+        result: list[TradeSummary] = []
+        for o in outcomes:
+            if only_open and o.is_closed:
+                continue
+            if only_closed and not o.is_closed:
+                continue
+            result.append(_trade_summary(o))
+            if len(result) >= limit:
+                break
+        return result
+
+    def trade_detail(self, trade_id: str) -> dict[str, Any] | None:
+        log = self._open_logger()
+        outcome = log.get_by_id(trade_id)
+        if outcome is None:
+            return None
+        return _serialize_outcome_full(outcome)
+
+    def equity_curve(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Equity точки из закрытых сделок (running PnL cumulative).
+
+        Простая реализация: накопленный pnl_usd от каждой closed trade.
+        Для true equity curve нужны snapshots equity между сделками —
+        отдельный PR.
+        """
+        outcomes = self._all_outcomes_desc()
+        closed = [o for o in outcomes if o.is_closed and o.pnl_usd is not None]
+        closed.sort(key=lambda o: o.exit_time_ms or 0)
+        cumulative = Decimal("0")
+        points: list[dict[str, Any]] = []
+        for o in closed[-limit:]:
+            assert o.pnl_usd is not None
+            cumulative += o.pnl_usd
+            points.append(
+                {
+                    "timestamp_ms": o.exit_time_ms,
+                    "cumulative_pnl_usd": str(cumulative),
+                    "pnl_usd": str(o.pnl_usd),
+                    "trade_id": o.trade_id,
+                }
+            )
+        return points
+
+    # ── Agents ──────────────────────────────────────────────────────────────
+
+    def agent_snapshots(self) -> list[AgentSnapshot]:
+        """Последний decision каждого из 5 субагентов.
+
+        Идём по closed/open trades DESC, берём первый который у этого
+        агента не пустой payload.
+        """
+        agent_keys = (
+            "market_analyst",
+            "sentiment_analyst",
+            "risk_overseer",
+            "macro_analyst",
+            "coordinator",
+        )
+        found: dict[str, AgentSnapshot] = {}
+        for o in self._all_outcomes_desc():
+            for key in agent_keys:
+                if key in found:
+                    continue
+                payload = _agent_payload_for(o, key)
+                if not payload:
+                    continue
+                found[key] = AgentSnapshot(
+                    name=key,
+                    last_payload=payload,
+                    last_trade_id=o.trade_id,
+                    last_decision_at_ms=o.entry_time_ms,
+                )
+            if len(found) == len(agent_keys):
+                break
+        # Возвращаем в стабильном порядке, недостающие — пустые payloads
+        result: list[AgentSnapshot] = []
+        for key in agent_keys:
+            snap = found.get(key)
+            if snap is None:
+                result.append(
+                    AgentSnapshot(
+                        name=key,
+                        last_payload={},
+                        last_trade_id="",
+                        last_decision_at_ms=0,
+                    )
+                )
+            else:
+                result.append(snap)
+        return result
+
+    # ── Helpers ─────────────────────────────────────────────────────────────
+
+    def _open_logger(self) -> TradeOutcomeLogger:
+        # Connection per-call → стандартный паттерн TradeOutcomeLogger
+        return TradeOutcomeLogger(self._outcomes_db)
+
+    def _all_outcomes_desc(self) -> list[TradeOutcome]:
+        if not self._outcomes_db.exists():
+            return []
+        log = self._open_logger()
+        return sorted(log.iter_all(), key=lambda o: o.entry_time_ms, reverse=True)
+
+
+# ── Module helpers ──────────────────────────────────────────────────────────
+
+
+def _trade_summary(o: TradeOutcome) -> TradeSummary:
+    return TradeSummary(
+        trade_id=o.trade_id,
+        symbol=o.symbol,
+        side=o.side,
+        entry_time_ms=o.entry_time_ms,
+        entry_price=str(o.entry_price),
+        exit_time_ms=o.exit_time_ms,
+        exit_price=str(o.exit_price) if o.exit_price is not None else None,
+        pnl_pct=str(o.pnl_pct) if o.pnl_pct is not None else None,
+        exit_reason=o.exit_reason,
+        holding_time_min=o.holding_time_min,
+        is_closed=o.is_closed,
+        is_win=o.is_win,
+        is_loss=o.is_loss,
+    )
+
+
+def _serialize_outcome_full(o: TradeOutcome) -> dict[str, Any]:
+    import json
+
+    def _maybe_json(raw: str) -> Any:
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return raw
+
+    return {
+        "trade_id": o.trade_id,
+        "symbol": o.symbol,
+        "side": o.side,
+        "entry_time_ms": o.entry_time_ms,
+        "entry_price": str(o.entry_price),
+        "size": str(o.size),
+        "exit_time_ms": o.exit_time_ms,
+        "exit_price": str(o.exit_price) if o.exit_price is not None else None,
+        "pnl_usd": str(o.pnl_usd) if o.pnl_usd is not None else None,
+        "pnl_pct": str(o.pnl_pct) if o.pnl_pct is not None else None,
+        "exit_reason": o.exit_reason,
+        "holding_time_min": o.holding_time_min,
+        "latency_decision_ms": o.latency_decision_ms,
+        "latency_execution_ms": o.latency_execution_ms,
+        "slippage_bps": str(o.slippage_bps) if o.slippage_bps is not None else None,
+        "is_closed": o.is_closed,
+        "is_win": o.is_win,
+        "is_loss": o.is_loss,
+        # LLM payloads — десериализованные dict
+        "signal_candidate": _maybe_json(o.signal_candidate_json),
+        "market_analyst": _maybe_json(o.market_analyst_json),
+        "sentiment_analyst": _maybe_json(o.sentiment_analyst_json),
+        "risk_overseer": _maybe_json(o.risk_overseer_json),
+        "macro_analyst": _maybe_json(o.macro_analyst_json),
+        "coordinator": _maybe_json(o.coordinator_json),
+    }
+
+
+def _agent_payload_for(o: TradeOutcome, agent_key: str) -> dict[str, Any]:
+    import json
+
+    json_field = {
+        "market_analyst": o.market_analyst_json,
+        "sentiment_analyst": o.sentiment_analyst_json,
+        "risk_overseer": o.risk_overseer_json,
+        "macro_analyst": o.macro_analyst_json,
+        "coordinator": o.coordinator_json,
+    }.get(agent_key, "{}")
+    try:
+        parsed = json.loads(json_field)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return parsed
+
+
+def _parse_halt_file(path: Path) -> dict[str, str]:
+    """Парсим metadata из halt-файла (формат HaltFlag.set)."""
+    text = path.read_text(encoding="utf-8")
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        fields[key.strip()] = value.strip()
+    return fields
+
+
+def _summary_to_dict(s: TradeSummary) -> dict[str, Any]:
+    return {
+        "trade_id": s.trade_id,
+        "symbol": s.symbol,
+        "side": s.side,
+        "entry_time_ms": s.entry_time_ms,
+        "entry_price": s.entry_price,
+        "exit_time_ms": s.exit_time_ms,
+        "exit_price": s.exit_price,
+        "pnl_pct": s.pnl_pct,
+        "exit_reason": s.exit_reason,
+        "holding_time_min": s.holding_time_min,
+        "is_closed": s.is_closed,
+        "is_win": s.is_win,
+        "is_loss": s.is_loss,
+    }
+
+
+def _agent_to_dict(a: AgentSnapshot) -> dict[str, Any]:
+    return {
+        "name": a.name,
+        "last_payload": a.last_payload,
+        "last_trade_id": a.last_trade_id,
+        "last_decision_at_ms": a.last_decision_at_ms,
+    }
+
+
+def summaries_to_dicts(items: Iterable[TradeSummary]) -> list[dict[str, Any]]:
+    return [_summary_to_dict(s) for s in items]
+
+
+def agents_to_dicts(items: Iterable[AgentSnapshot]) -> list[dict[str, Any]]:
+    return [_agent_to_dict(a) for a in items]
+
+
+def health_to_dict(h: HealthInfo) -> dict[str, Any]:
+    return {
+        "status": h.status,
+        "uptime_s": h.uptime_s,
+        "runner_heartbeat_age_s": h.runner_heartbeat_age_s,
+        "halt_active": h.halt_active,
+        "halt_reason": h.halt_reason,
+    }

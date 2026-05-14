@@ -23,6 +23,11 @@ dev = [
     "mypy>=1.14,<2",
     "types-pyyaml>=6.0,<7",
 ]
+# Web dashboard (отдельный optional чтобы не утяжелять trading runtime)
+dashboard = [
+    "fastapi>=0.115,<0.117",
+    "uvicorn[standard]>=0.32,<0.36",
+]
 
 [build-system]
 requires = ["setuptools>=70"]
