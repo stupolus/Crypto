@@ -65,10 +65,20 @@ if ! id "${USER_NAME}" >/dev/null 2>&1; then
 fi
 
 echo "==> [3/9] clone repo to ${INSTALL_DIR}"
-if [[ ! -d "${INSTALL_DIR}/.git" ]]; then
+if [[ -d "${INSTALL_DIR}/.git" ]]; then
+  # Уже git repo — просто обновляем
+  sudo -u "${USER_NAME}" git -C "${INSTALL_DIR}" pull origin main
+elif [[ -d "${INSTALL_DIR}" ]]; then
+  # Директория есть но без .git (residue от прошлой неудачной попытки) — вычищаем.
+  # Сохраняем существующие data файлы если есть (на всякий).
+  if [[ -d "${INSTALL_DIR}/.venv" || -f "${INSTALL_DIR}/pyproject.toml" ]]; then
+    echo "    ${INSTALL_DIR} существует но не git repo (повторный install после ошибки) — пересоздаю"
+  fi
+  rm -rf "${INSTALL_DIR}"
+  install -d -o "${USER_NAME}" -g "${USER_NAME}" "${INSTALL_DIR}"
   sudo -u "${USER_NAME}" git clone "${REPO_URL}" "${INSTALL_DIR}"
 else
-  sudo -u "${USER_NAME}" git -C "${INSTALL_DIR}" pull origin main
+  sudo -u "${USER_NAME}" git clone "${REPO_URL}" "${INSTALL_DIR}"
 fi
 
 echo "==> [4/9] venv + dependencies (${PYTHON_BIN})"
