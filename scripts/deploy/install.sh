@@ -46,9 +46,18 @@ fi
 echo "==> [1/9] apt-get install dependencies"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq \
-  python3.12 python3.12-venv python3.12-dev \
-  git curl ufw fail2ban logrotate
+# Ubuntu 24.04 LTS shipping python3.12; Ubuntu 25.10+ shipping python3.13.
+# Codebase requires 3.12+, обе версии работают. Выбираем доступное.
+if apt-cache show python3.12 >/dev/null 2>&1; then
+  PYTHON_PKGS="python3.12 python3.12-venv python3.12-dev"
+  PYTHON_BIN="python3.12"
+else
+  PYTHON_PKGS="python3 python3-venv python3-dev"
+  PYTHON_BIN="python3"
+  echo "    (using system python3 — python3.12 not available in this Ubuntu)"
+fi
+# shellcheck disable=SC2086
+apt-get install -y -qq ${PYTHON_PKGS} git curl ufw fail2ban logrotate
 
 echo "==> [2/9] create user '${USER_NAME}'"
 if ! id "${USER_NAME}" >/dev/null 2>&1; then
@@ -62,9 +71,9 @@ else
   sudo -u "${USER_NAME}" git -C "${INSTALL_DIR}" pull origin main
 fi
 
-echo "==> [4/9] venv + dependencies"
+echo "==> [4/9] venv + dependencies (${PYTHON_BIN})"
 if [[ ! -d "${INSTALL_DIR}/.venv" ]]; then
-  sudo -u "${USER_NAME}" python3.12 -m venv "${INSTALL_DIR}/.venv"
+  sudo -u "${USER_NAME}" "${PYTHON_BIN}" -m venv "${INSTALL_DIR}/.venv"
 fi
 sudo -u "${USER_NAME}" "${INSTALL_DIR}/.venv/bin/pip" install -q --upgrade pip
 sudo -u "${USER_NAME}" "${INSTALL_DIR}/.venv/bin/pip" install -q -e "${INSTALL_DIR}[dev]"
