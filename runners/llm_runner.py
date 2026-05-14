@@ -514,6 +514,22 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
         public_api = PublicAPI(client, client.config)
         private_api = PrivateAPI(client, journal=journal, metrics=metrics)
 
+        # CRITICAL: явно выставить плечо для символа.
+        # CLAUDE.md / риск-профиль: max 5x effective leverage.
+        # Без этого BingX использует дефолт аккаунта (часто 10x) — silent risk.
+        leverage = max(1, min(args.max_leverage, 5))
+        try:
+            await private_api.set_leverage(args.symbol, leverage, "BOTH")
+            logger.info("leverage set: %s @ %dx (BOTH)", args.symbol, leverage)
+        except Exception as exc:
+            logger.error("set_leverage failed for %s: %s", args.symbol, exc)
+            # Не start'уем без правильного плеча — это критичная safety
+            raise SystemExit(
+                f"Cannot set leverage on {args.symbol}: {exc}. "
+                f"Без явного плеча есть риск что биржа применит default 10x+. "
+                f"Проверь API permissions и валидность аккаунта."
+            ) from exc
+
         history = await _warm_history(
             public_api, args.symbol, args.interval, count=args.warmup_candles
         )
@@ -610,6 +626,16 @@ def main() -> None:
         "Пустая строка отключает проверку.",
     )
     parser.add_argument("--heartbeat-file", default=None)
+    parser.add_argument(
+        "--max-leverage",
+        type=int,
+        default=5,
+        help=(
+            "Максимальное плечо (cap 1-5x). Выставляется ЯВНО на бирже до "
+            "первой сделки. CLAUDE.md требует ≤5x. По умолчанию 5x. "
+            "Меньшие значения = более консервативно (1x = no leverage)."
+        ),
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
 
