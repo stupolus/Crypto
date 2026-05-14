@@ -35,6 +35,7 @@ from core.agents.evaluate import (
     evaluate_with_team,
 )
 from core.agents.factory import AgentFactoryError, build_default_team, build_mock_team
+from core.agents.llm_gate import LLMGateResult, llm_gate
 from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
 from core.agents.mock import MockAgent
@@ -54,6 +55,7 @@ __all__ = [
     "AnthropicAgent",
     "BaseAgent",
     "CoordinatorAgent",
+    "LLMGateResult",
     "MacroAnalystAgent",
     "MacroContextData",
     "MarketAnalystAgent",
@@ -70,4 +72,5 @@ __all__ = [
     "build_mock_team",
     "build_signal_candidate",
     "evaluate_with_team",
+    "llm_gate",
 ]
