@@ -8,9 +8,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from adapters.bingx.models import Kline
+from adapters.bingx.private_models import OrderRequest
+from core.agents.llm_gate import LLMGateResult
+from core.agents.team import TeamDecision
 from core.backtest.models import OpenPosition
 from runners.live_runner import RunnerState
 from runners.llm_runner import (
+    _build_decision_context,
     _build_runner_state_snapshot,
     _NoopFREDFetcher,
     _NoopYahooFetcher,
@@ -101,3 +106,89 @@ def test_noop_fred_satisfies_protocol() -> None:
     assert snap.cpi_urban is None
     # Warnings про отсутствие каждой series
     assert len(snap.warnings) >= 4
+
+
+def _make_candle(close: str = "80500") -> Kline:
+    return Kline.model_validate(
+        {
+            "time": 1_700_000_000_000,
+            "open": close,
+            "high": close,
+            "low": close,
+            "close": close,
+            "volume": "1",
+        }
+    )
+
+
+def _make_approved_request() -> OrderRequest:
+    return OrderRequest(
+        symbol="BTC-USDT",
+        side="BUY",
+        order_type="LIMIT",
+        quantity=Decimal("0.1"),
+        price=Decimal("80500"),
+        attached_stop_loss=Decimal("80000"),
+        attached_take_profit=Decimal("82000"),
+    )
+
+
+def _make_gate_result(action: str = "BUY") -> LLMGateResult:
+    decision = TeamDecision(
+        coordinator_payload={
+            "action": action,
+            "size_risk_pct": 1.0,
+            "composite_confidence": 0.75,
+        },
+        subagent_payloads={
+            "market": {"state": "TRENDING_UP"},
+            "sentiment": {"sentiment_score": 0.4},
+            "risk": {"approved": True},
+            "macro": {"regime": "RISK_ON"},
+        },
+        macro_cached=False,
+        total_latency_ms=350,
+        total_cost_usd=0.05,
+    )
+    return LLMGateResult(
+        approved_request=_make_approved_request(),
+        decision=decision,
+        reason="APPROVED",
+    )
+
+
+def test_build_decision_context_pulls_all_payloads() -> None:
+    ctx = _build_decision_context(
+        trade_id="bingx_order_42",
+        approved=_make_approved_request(),
+        gate_result=_make_gate_result(),
+        candle=_make_candle(),
+    )
+    assert ctx.trade_id == "bingx_order_42"
+    assert ctx.symbol == "BTC-USDT"
+    assert ctx.side == "BUY"
+    assert ctx.entry_price == Decimal("80500")
+    assert ctx.size == Decimal("0.1")
+    # LLM payloads разобраны
+    assert ctx.market_analyst == {"state": "TRENDING_UP"}
+    assert ctx.coordinator["action"] == "BUY"
+    assert ctx.coordinator["composite_confidence"] == 0.75
+    assert ctx.latency_decision_ms == 350
+
+
+def test_build_decision_context_market_order_uses_candle_close() -> None:
+    """MARKET order не имеет price → entry_price берётся из candle.close."""
+    market_request = OrderRequest(
+        symbol="BTC-USDT",
+        side="BUY",
+        order_type="MARKET",
+        quantity=Decimal("0.1"),
+        attached_stop_loss=Decimal("80000"),
+    )
+    ctx = _build_decision_context(
+        trade_id="t1",
+        approved=market_request,
+        gate_result=_make_gate_result(),
+        candle=_make_candle(close="80600"),
+    )
+    assert ctx.entry_price == Decimal("80600")
