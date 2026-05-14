@@ -1,0 +1,11 @@
+[Unit]
+Description=Crypto bot — post-mortem обработка убыточных сделок (daily 04:00 UTC)
+Requires=crypto-postmortem.service
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

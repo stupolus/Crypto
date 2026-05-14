@@ -105,6 +105,13 @@ chmod 750 "${DATA_DIR}"
 echo "==> [7/9] systemd unit + logrotate"
 install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-runner@.service" \
   /etc/systemd/system/crypto-runner@.service
+# Phase E LLM runner (новый) + post-mortem timer
+install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-llm-runner@.service" \
+  /etc/systemd/system/crypto-llm-runner@.service
+install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-postmortem.service" \
+  /etc/systemd/system/crypto-postmortem.service
+install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-postmortem.timer" \
+  /etc/systemd/system/crypto-postmortem.timer
 install -m 644 "${INSTALL_DIR}/scripts/deploy/logrotate.conf" \
   /etc/logrotate.d/crypto
 systemctl daemon-reload
@@ -134,17 +141,27 @@ cat <<'EOF'
      Минимум: BINGX_VST_API_KEY, BINGX_VST_API_SECRET.
      Рекомендую: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
 
-  2. Включи раннеры:
+  2. Запусти diagnose (проверка конфига):
+       sudo -u crypto /opt/crypto/.venv/bin/python -m scripts.diagnose
+
+  3. Включи Phase E LLM runner (с Layer 6 post-mortem):
+       sudo systemctl enable --now crypto-llm-runner@BTC-USDT
+
+     Или legacy без LLM (если нет ANTHROPIC_API_KEY):
        sudo systemctl enable --now crypto-runner@BTC-USDT
-       sudo systemctl enable --now crypto-runner@ETH-USDT
-       sudo systemctl enable --now crypto-runner@XRP-USDT
 
-  3. Проверь что работают:
-       sudo systemctl status crypto-runner@BTC-USDT
-       sudo journalctl -u 'crypto-runner@*' -f
+  4. Включи daily post-mortem обработку loss-сделок:
+       sudo systemctl enable --now crypto-postmortem.timer
 
-  4. Через 15 минут проверь, что прилетели close events:
-       sudo journalctl -u crypto-runner@BTC-USDT | grep "candle closed"
+  5. Проверь что работают:
+       sudo systemctl status crypto-llm-runner@BTC-USDT
+       sudo journalctl -u 'crypto-llm-runner@*' -f
+
+  6. Через 15 минут проверь, что прилетели close events:
+       sudo journalctl -u crypto-llm-runner@BTC-USDT | grep "candle closed"
+
+  7. Ежедневная сводка:
+       sudo -u crypto /opt/crypto/.venv/bin/python -m scripts.daily_summary
 
 ================================================================================
 EOF
