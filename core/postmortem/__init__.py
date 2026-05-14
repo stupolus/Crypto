@@ -9,6 +9,10 @@ Hot path: только writes. Reads — offline / weekly review.
 """
 
 from core.postmortem.logger import TradeOutcomeLogger
+from core.postmortem.mistake_classifier import (
+    MistakeClassifierAgent,
+    trade_outcome_to_context,
+)
 from core.postmortem.models import (
     DecisionContext,
     ExitData,
@@ -21,7 +25,9 @@ __all__ = [
     "DecisionContext",
     "ExitData",
     "ExitReason",
+    "MistakeClassifierAgent",
     "OrderSide",
     "TradeOutcome",
     "TradeOutcomeLogger",
+    "trade_outcome_to_context",
 ]
