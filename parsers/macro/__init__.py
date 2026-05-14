@@ -10,19 +10,24 @@
 """
 
 from parsers.macro.context_builder import MacroContextBuilder
+from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
 from parsers.macro.fred_adapter import FREDAdapter, FREDFetcher, FREDSnapshot
 from parsers.macro.fred_http_fetcher import FREDHttpFetcher
 from parsers.macro.models import MacroSnapshot, YfinanceQuote
+from parsers.macro.settings import FREDSettings
 from parsers.macro.yfinance_adapter import YahooFetcher, YfinanceAdapter
 
 __all__ = [
     "FREDAdapter",
+    "FREDFactoryError",
     "FREDFetcher",
     "FREDHttpFetcher",
+    "FREDSettings",
     "FREDSnapshot",
     "MacroContextBuilder",
     "MacroSnapshot",
     "YahooFetcher",
     "YfinanceAdapter",
     "YfinanceQuote",
+    "build_fred_adapter_from_env",
 ]
