@@ -1,0 +1,26 @@
+[Unit]
+Description=Crypto bot — post-mortem обработка убыточных сделок (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=/etc/crypto/.env
+ExecStart=/opt/crypto/.venv/bin/python -m scripts.process_mistakes \
+    --db /var/lib/crypto/llm-BTC-USDT-outcomes.sqlite \
+    --out-dir /var/lib/crypto/journal/mistakes \
+    --limit 50
+
+# Безопасность
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/crypto
+ProtectHome=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-postmortem
