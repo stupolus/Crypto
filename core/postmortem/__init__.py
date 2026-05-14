@@ -13,6 +13,12 @@ from core.postmortem.mistake_classifier import (
     MistakeClassifierAgent,
     trade_outcome_to_context,
 )
+from core.postmortem.mistake_writer import (
+    MistakeClassification,
+    build_mistake_markdown,
+    mistake_filename,
+    write_mistake_document,
+)
 from core.postmortem.models import (
     DecisionContext,
     ExitData,
@@ -25,9 +31,13 @@ __all__ = [
     "DecisionContext",
     "ExitData",
     "ExitReason",
+    "MistakeClassification",
     "MistakeClassifierAgent",
     "OrderSide",
     "TradeOutcome",
     "TradeOutcomeLogger",
+    "build_mistake_markdown",
+    "mistake_filename",
     "trade_outcome_to_context",
+    "write_mistake_document",
 ]
