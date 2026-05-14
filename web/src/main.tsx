@@ -7,6 +7,7 @@ import Overview from "./pages/Overview";
 import Agents from "./pages/Agents";
 import Trades from "./pages/Trades";
 import TradeDetail from "./pages/TradeDetail";
+import News from "./pages/News";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="agents" element={<Agents />} />
           <Route path="trades" element={<Trades />} />
           <Route path="trades/:id" element={<TradeDetail />} />
+          <Route path="news" element={<News />} />
         </Route>
       </Routes>
     </BrowserRouter>

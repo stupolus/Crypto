@@ -6,6 +6,7 @@ const navItems = [
   { to: "/", label: "Overview", end: true },
   { to: "/agents", label: "Agents" },
   { to: "/trades", label: "Trades" },
+  { to: "/news", label: "News" },
 ];
 
 export default function Layout() {

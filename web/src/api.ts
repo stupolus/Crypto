@@ -80,6 +80,14 @@ export interface EquityPoint {
   trade_id: string;
 }
 
+export interface NewsItem {
+  title: string;
+  link: string;
+  source: string;
+  pub_ts_ms: number;
+  summary: string;
+}
+
 const API_BASE = ""; // same origin in prod, vite proxy in dev
 
 async function json<T>(path: string): Promise<T> {
@@ -105,4 +113,5 @@ export const api = {
   },
   trade: (id: string) => json<TradeDetail>(`/api/trades/${encodeURIComponent(id)}`),
   equity: (limit = 100) => json<{ points: EquityPoint[] }>(`/api/equity?limit=${limit}`),
+  news: (limit = 30) => json<{ items: NewsItem[] }>(`/api/news?limit=${limit}`),
 };
