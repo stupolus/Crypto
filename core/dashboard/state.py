@@ -171,6 +171,34 @@ class DashboardState:
             )
         return points
 
+    def agent_confidence_history(self, agent_name: str, *, limit: int = 30) -> list[dict[str, Any]]:
+        """История последних confidence/score значений одного агента.
+
+        Используется для sparkline в UI: видеть как менялась уверенность
+        агента в последних сделках.
+
+        Возвращает list[{trade_id, timestamp_ms, value}] DESC by time.
+        """
+        outcomes = self._all_outcomes_desc()
+        result: list[dict[str, Any]] = []
+        for o in outcomes:
+            payload = _agent_payload_for(o, agent_name)
+            if not payload:
+                continue
+            value = _extract_confidence(payload, agent_name)
+            if value is None:
+                continue
+            result.append(
+                {
+                    "trade_id": o.trade_id,
+                    "timestamp_ms": o.entry_time_ms,
+                    "value": value,
+                }
+            )
+            if len(result) >= limit:
+                break
+        return result
+
     # ── Agents ──────────────────────────────────────────────────────────────
 
     def agent_snapshots(self) -> list[AgentSnapshot]:
@@ -289,6 +317,32 @@ def _serialize_outcome_full(o: TradeOutcome) -> dict[str, Any]:
         "macro_analyst": _maybe_json(o.macro_analyst_json),
         "coordinator": _maybe_json(o.coordinator_json),
     }
+
+
+def _extract_confidence(payload: dict[str, Any], agent_name: str) -> float | None:
+    """Извлекаем единое 0..1 значение для sparkline из агент-payload.
+
+    Coordinator: composite_confidence
+    Sentiment: sentiment_score normalized к [0,1] (был [-1, 1])
+    Все остальные: confidence (если есть)
+
+    None если payload пустой или поле отсутствует.
+    """
+    if not payload:
+        return None
+    if agent_name == "coordinator":
+        v = payload.get("composite_confidence")
+    elif agent_name == "sentiment_analyst":
+        s = payload.get("sentiment_score")
+        if isinstance(s, int | float):
+            # Map [-1, 1] → [0, 1]
+            return max(0.0, min(1.0, (float(s) + 1.0) / 2.0))
+        return None
+    else:
+        v = payload.get("confidence")
+    if isinstance(v, int | float):
+        return max(0.0, min(1.0, float(v)))
+    return None
 
 
 def _agent_payload_for(o: TradeOutcome, agent_key: str) -> dict[str, Any]:
