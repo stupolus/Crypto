@@ -44,6 +44,7 @@ from adapters.bingx.journal import OrderJournal
 from adapters.bingx.metrics import MetricsWriter
 from adapters.bingx.models import Kline
 from adapters.bingx.private import PrivateAPI
+from adapters.bingx.private_models import OrderUpdateEvent
 from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.user_stream import BingXUserDataStream
@@ -57,6 +58,7 @@ from core.alerts import Alerter
 from core.backtest.models import StrategyContext
 from core.postmortem import (
     DecisionContext,
+    ExitTracker,
     PastMistakesRetriever,
     TradeOutcomeLogger,
     summaries_to_prompt_text,
@@ -71,11 +73,11 @@ from runners.live_runner import (
     _build_alerter,
     _build_strategy,
     _fetch_equity,
+    _handle_user_event,
     _heartbeat_loop,
     _install_signal_handlers,
     _interval_to_ms,
     _KlineCloseDetector,
-    _user_events_loop,
     _warm_history,
 )
 
@@ -176,6 +178,7 @@ async def _handle_closed_candle_with_llm(
     market_builder: MarketContextBuilder,
     outcome_logger: TradeOutcomeLogger | None = None,
     past_mistakes_retriever: PastMistakesRetriever | None = None,
+    exit_tracker: ExitTracker | None = None,
 ) -> None:
     """Закрытая свеча → strategy → llm_gate → place_order.
 
@@ -313,6 +316,62 @@ async def _handle_closed_candle_with_llm(
             # Layer 6 ошибка не должна блокировать торговлю.
             logger.exception("outcome_logger.record_entry failed: %s", exc)
 
+    # Layer 6 exit tracking: regisrer открытую сделку чтобы потом её закрытие
+    # триггерило record_exit.
+    if exit_tracker is not None:
+        try:
+            exit_tracker.register_entry(
+                trade_id=ack.order_id,
+                symbol=approved.symbol,
+                entry_price=approved.price if approved.price is not None else candle.close,
+                size=approved.quantity,
+                entry_time_ms=int(time.time() * 1000),
+            )
+        except Exception:
+            logger.exception("exit_tracker.register_entry failed")
+
+
+async def _user_events_loop_with_tracker(
+    stream: Any,
+    strategy: Any,
+    state: RunnerState,
+    journal: Any,
+    *,
+    outcome_logger: TradeOutcomeLogger | None,
+    exit_tracker: ExitTracker | None,
+) -> None:
+    """Расширение live_runner._user_events_loop с Layer 6 exit tracking.
+
+    Делегирует основное поведение _handle_user_event, потом добавляет
+    ExitTracker.observe_order_event на каждый OrderUpdateEvent.
+    """
+    async for event in stream.events():
+        try:
+            await _handle_user_event(event, strategy, state, journal)
+        except Exception:
+            logger.exception("user event handler error for %r", event)
+            continue
+        # Layer 6 exit detection: только OrderUpdateEvent + tracker.
+        if (
+            exit_tracker is None
+            or outcome_logger is None
+            or not isinstance(event, OrderUpdateEvent)
+        ):
+            continue
+        try:
+            result = exit_tracker.observe_order_event(event)
+            if result is not None:
+                trade_id, exit_data = result
+                outcome_logger.record_exit(trade_id, exit_data)
+                logger.info(
+                    "Layer 6: record_exit %s reason=%s pnl=%s%%",
+                    trade_id,
+                    exit_data.exit_reason,
+                    exit_data.pnl_pct,
+                )
+        except Exception:
+            logger.exception("exit_tracker / record_exit failed for event %r", event)
+
 
 async def _candle_loop_llm(
     *,
@@ -327,6 +386,7 @@ async def _candle_loop_llm(
     market_builder: MarketContextBuilder,
     outcome_logger: TradeOutcomeLogger | None,
     past_mistakes_retriever: PastMistakesRetriever | None,
+    exit_tracker: ExitTracker | None,
 ) -> None:
     interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
@@ -358,6 +418,7 @@ async def _candle_loop_llm(
                 market_builder,
                 outcome_logger,
                 past_mistakes_retriever,
+                exit_tracker,
             )
 
 
@@ -408,11 +469,14 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
 
     outcome_logger: TradeOutcomeLogger | None = None
     past_mistakes_retriever: PastMistakesRetriever | None = None
+    exit_tracker: ExitTracker | None = None
     if args.outcomes_db:
         outcome_logger = TradeOutcomeLogger(Path(args.outcomes_db))
         past_mistakes_retriever = PastMistakesRetriever(outcome_logger)
+        exit_tracker = ExitTracker()
         logger.info(
-            "Layer 6 outcome logger + past-mistakes retriever enabled: %s", args.outcomes_db
+            "Layer 6 enabled: outcome_logger + past_mistakes + exit_tracker (%s)",
+            args.outcomes_db,
         )
 
     async with BingXClient(settings=settings) as client:
@@ -437,7 +501,14 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
 
         async with BingXUserDataStream(private_api) as user_stream:
             user_task = asyncio.create_task(
-                _user_events_loop(user_stream, strategy, state, journal),
+                _user_events_loop_with_tracker(
+                    user_stream,
+                    strategy,
+                    state,
+                    journal,
+                    outcome_logger=outcome_logger,
+                    exit_tracker=exit_tracker,
+                ),
                 name="llm-user-stream",
             )
             heartbeat_task: asyncio.Task[None] | None = None
@@ -460,6 +531,7 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     market_builder=market_builder,
                     outcome_logger=outcome_logger,
                     past_mistakes_retriever=past_mistakes_retriever,
+                    exit_tracker=exit_tracker,
                 )
             finally:
                 stop_event.set()
