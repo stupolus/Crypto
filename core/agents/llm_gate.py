@@ -83,6 +83,7 @@ async def llm_gate(
     market_data: MarketContextData,
     sentiment_data: SentimentContextData,
     macro_data: MacroContextData,
+    past_mistakes: str = "",
 ) -> LLMGateResult:
     """Прогонка OrderRequest через AgentTeam с возможной модификацией SL/TP.
 
@@ -90,6 +91,9 @@ async def llm_gate(
     entry/SL/TP. Если Coordinator меняет сторону (BUY→SELL или наоборот) —
     это считаем veto: стратегия предложила одно, Coordinator другое; вместо
     того чтобы выполнять противоположную сделку — отказываемся, лог критич.
+
+    ``past_mistakes`` — Layer 6 textual summary похожих past mistakes
+    (опционально). Передаётся в Coordinator prompt.
     """
     signal = build_signal_candidate(
         order_request,
@@ -105,6 +109,7 @@ async def llm_gate(
         market_data=market_data,
         sentiment_data=sentiment_data,
         macro_data=macro_data,
+        past_mistakes=past_mistakes,
     )
     payload = decision.coordinator_payload
     action = payload.get("action")

@@ -120,11 +120,15 @@ class AgentTeam:
         sentiment_context: dict[str, Any],
         risk_context: dict[str, Any],
         macro_context: dict[str, Any],
+        past_mistakes: str = "",
     ) -> TeamDecision:
         """Главная точка входа. Возвращает TeamDecision с финальным action.
 
         ``signal_context`` — оригинальный SignalCandidate от Layer 2.
         Остальные contexts — input для соответствующих субагентов.
+
+        ``past_mistakes`` — Layer 6 текстовое summary похожих past mistakes
+        (опционально, default ""). Передаётся в Coordinator prompt.
 
         Если Risk Overseer упал — возвращаем HOLD автоматически (safety).
         """
@@ -166,13 +170,14 @@ class AgentTeam:
                 errors=tuple(errors),
             )
 
-        # 4. Coordinator получает всё
+        # 4. Coordinator получает всё + Layer 6 past_mistakes (default "")
         coordinator_context = {
             "signal_json": _safe_json_dumps(signal_context),
             "market_analyst_json": _safe_json_dumps(market_payload or {}),
             "sentiment_analyst_json": _safe_json_dumps(sentiment_payload or {}),
             "risk_overseer_json": _safe_json_dumps(risk_payload),
             "macro_analyst_json": _safe_json_dumps(macro_payload),
+            "past_mistakes": past_mistakes,
         }
         try:
             coordinator_resp = await self._coordinator.run(

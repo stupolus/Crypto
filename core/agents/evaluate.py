@@ -100,6 +100,7 @@ async def evaluate_with_team(
     market_data: MarketContextData,
     sentiment_data: SentimentContextData,
     macro_data: MacroContextData,
+    past_mistakes: str = "",
 ) -> TeamDecision:
     """Запустить AgentTeam на конкретный SignalCandidate.
 
@@ -110,6 +111,8 @@ async def evaluate_with_team(
         market_data: технические индикаторы для Market Analyst
         sentiment_data: pre-aggregated sentiment input
         macro_data: macro snapshot
+        past_mistakes: Layer 6 textual summary похожих past mistakes
+            (опционально, default ""). Передаётся в Coordinator prompt.
 
     Returns:
         TeamDecision с финальным action / size / entry / SL / TP.
@@ -170,6 +173,7 @@ async def evaluate_with_team(
         sentiment_context=sentiment_context,
         risk_context=risk_context,
         macro_context=macro_context,
+        past_mistakes=past_mistakes,
     )
 
 
