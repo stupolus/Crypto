@@ -55,7 +55,12 @@ from core.agents.market_context_builder import MarketContextBuilder
 from core.agents.team import AgentTeam
 from core.alerts import Alerter
 from core.backtest.models import StrategyContext
-from core.postmortem import DecisionContext, TradeOutcomeLogger
+from core.postmortem import (
+    DecisionContext,
+    PastMistakesRetriever,
+    TradeOutcomeLogger,
+    summaries_to_prompt_text,
+)
 from core.risk import RiskEngine
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
@@ -170,6 +175,7 @@ async def _handle_closed_candle_with_llm(
     macro_builder: MacroContextBuilder,
     market_builder: MarketContextBuilder,
     outcome_logger: TradeOutcomeLogger | None = None,
+    past_mistakes_retriever: PastMistakesRetriever | None = None,
 ) -> None:
     """Закрытая свеча → strategy → llm_gate → place_order.
 
@@ -177,6 +183,11 @@ async def _handle_closed_candle_with_llm(
     OrderRequest на биржу прогоняем через AgentTeam. После APPROVED +
     успешного place_order сохраняем DecisionContext в Layer 6 journal
     (если outcome_logger передан).
+
+    Если ``past_mistakes_retriever`` передан — для каждого raw signal
+    логируем top-N похожих past mistakes из истории (Layer 6 feedback
+    loop). Реальная инъекция в Coordinator prompt — отдельный PR с
+    обновлением промпта (требует accept нового поля past_mistakes).
     """
     state.candles_history.append(candle)
     max_history = max(args.warmup_candles * 2, 500)
@@ -205,6 +216,18 @@ async def _handle_closed_candle_with_llm(
         request.quantity,
         request.attached_stop_loss,
     )
+
+    # Layer 6 feedback: логируем past mistakes на этом символе.
+    # Реальная инъекция в Coordinator — отдельный PR с обновлением промпта.
+    if past_mistakes_retriever is not None:
+        try:
+            similar = past_mistakes_retriever.find_similar(symbol=request.symbol, limit=3)
+            if similar:
+                logger.info("past mistakes context:\n%s", summaries_to_prompt_text(similar))
+            else:
+                logger.debug("past mistakes: нет похожих на %s", request.symbol)
+        except Exception:
+            logger.exception("past_mistakes_retriever.find_similar failed")
 
     market_data = market_builder.build(history=state.candles_history)
     macro_data = await macro_builder.build()
@@ -301,6 +324,7 @@ async def _candle_loop_llm(
     macro_builder: MacroContextBuilder,
     market_builder: MarketContextBuilder,
     outcome_logger: TradeOutcomeLogger | None,
+    past_mistakes_retriever: PastMistakesRetriever | None,
 ) -> None:
     interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
@@ -331,6 +355,7 @@ async def _candle_loop_llm(
                 macro_builder,
                 market_builder,
                 outcome_logger,
+                past_mistakes_retriever,
             )
 
 
@@ -380,9 +405,13 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
     market_builder = MarketContextBuilder()
 
     outcome_logger: TradeOutcomeLogger | None = None
+    past_mistakes_retriever: PastMistakesRetriever | None = None
     if args.outcomes_db:
         outcome_logger = TradeOutcomeLogger(Path(args.outcomes_db))
-        logger.info("Layer 6 outcome logger enabled: %s", args.outcomes_db)
+        past_mistakes_retriever = PastMistakesRetriever(outcome_logger)
+        logger.info(
+            "Layer 6 outcome logger + past-mistakes retriever enabled: %s", args.outcomes_db
+        )
 
     async with BingXClient(settings=settings) as client:
         public_api = PublicAPI(client, client.config)
@@ -428,6 +457,7 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     macro_builder=macro_builder,
                     market_builder=market_builder,
                     outcome_logger=outcome_logger,
+                    past_mistakes_retriever=past_mistakes_retriever,
                 )
             finally:
                 stop_event.set()
