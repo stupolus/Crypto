@@ -21,6 +21,12 @@ from core.signals.indicators import (
     sma,
     true_range,
 )
+from core.signals.order_flow import (
+    OrderFlowConfig,
+    OrderFlowSignal,
+    compute_imbalance,
+    detect_order_flow,
+)
 from core.signals.session import (
     is_in_window,
     utc_day_of_epoch,
@@ -33,11 +39,15 @@ __all__ = [
     "FundingExtremeSignal",
     "FundingProvider",
     "NewsCalendar",
+    "OrderFlowConfig",
+    "OrderFlowSignal",
     "SetBlacklist",
     "StaticFundingProvider",
     "StaticNewsCalendar",
     "atr",
+    "compute_imbalance",
     "detect_funding_extreme",
+    "detect_order_flow",
     "donchian_channel",
     "ema",
     "is_in_window",
