@@ -16,6 +16,7 @@ from parsers.twitter.groq_client import (
     TweetClassification,
 )
 from parsers.twitter.models import SentimentSnapshot, Tweet
+from parsers.twitter.x_api_scraper import XApiScraper
 
 __all__ = [
     "ApifyScraperError",
@@ -27,4 +28,5 @@ __all__ = [
     "SentimentSnapshot",
     "Tweet",
     "TweetClassification",
+    "XApiScraper",
 ]
