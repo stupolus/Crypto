@@ -11,12 +11,14 @@
 
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.fred_adapter import FREDAdapter, FREDFetcher, FREDSnapshot
+from parsers.macro.fred_http_fetcher import FREDHttpFetcher
 from parsers.macro.models import MacroSnapshot, YfinanceQuote
 from parsers.macro.yfinance_adapter import YahooFetcher, YfinanceAdapter
 
 __all__ = [
     "FREDAdapter",
     "FREDFetcher",
+    "FREDHttpFetcher",
     "FREDSnapshot",
     "MacroContextBuilder",
     "MacroSnapshot",
