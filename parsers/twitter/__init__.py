@@ -7,10 +7,22 @@
 4. SentimentAnalystAgent (Layer 3) использует SentimentSnapshot
 """
 
+from parsers.twitter.aggregator import SentimentAggregator
+from parsers.twitter.apify_scraper import ApifyScraperError, ApifyTwitterScraper
 from parsers.twitter.groq_client import (
     GroqClient,
     GroqError,
     TweetClassification,
 )
+from parsers.twitter.models import SentimentSnapshot, Tweet
 
-__all__ = ["GroqClient", "GroqError", "TweetClassification"]
+__all__ = [
+    "ApifyScraperError",
+    "ApifyTwitterScraper",
+    "GroqClient",
+    "GroqError",
+    "SentimentAggregator",
+    "SentimentSnapshot",
+    "Tweet",
+    "TweetClassification",
+]
