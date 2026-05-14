@@ -204,6 +204,21 @@ async def _handle_closed_candle_with_llm(
     if request is None:
         return
 
+    # Session window check: некоторые asset classes торгуются только в окне
+    # (stock_perp = NY hours, commodity = Mon-Fri). Сигнал вне окна → skip.
+    try:
+        from core.assets import is_session_open
+
+        if not is_session_open(request.symbol):
+            logger.info(
+                "session closed for %s — skipping signal (out-of-hours)",
+                request.symbol,
+            )
+            return
+    except Exception:
+        # Asset не зарегистрирован → 24/7 fallback (как было до multi-asset)
+        pass
+
     # Emergency halt check: если флаг существует, не открываем новую сделку.
     # Открытые позиции защищены биржевыми SL/TP, их не трогаем.
     if halt_flag is not None and halt_flag.is_set():
@@ -503,12 +518,26 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
         private_api = PrivateAPI(client, journal=journal, metrics=metrics)
 
         # CRITICAL: явно выставить плечо для символа.
-        # CLAUDE.md / риск-профиль: max 5x effective leverage.
+        # CLAUDE.md / риск-профиль: max 5x crypto, 3x для TradFi (overnight gap).
         # Без этого BingX использует дефолт аккаунта (часто 10x) — silent risk.
-        leverage = max(1, min(args.max_leverage, 5))
+        # Asset-specific cap из registry, потом cap CLI args.max_leverage.
+        try:
+            from core.assets import DEFAULT_REGISTRY
+
+            asset_cfg = DEFAULT_REGISTRY.get(args.symbol)
+            asset_cap = asset_cfg.max_leverage
+        except Exception:
+            asset_cap = 5  # crypto fallback
+        leverage = max(1, min(args.max_leverage, asset_cap))
         try:
             await private_api.set_leverage(args.symbol, leverage, "BOTH")
-            logger.info("leverage set: %s @ %dx (BOTH)", args.symbol, leverage)
+            logger.info(
+                "leverage set: %s @ %dx (BOTH) [asset_cap=%d, cli=%d]",
+                args.symbol,
+                leverage,
+                asset_cap,
+                args.max_leverage,
+            )
         except Exception as exc:
             logger.error("set_leverage failed for %s: %s", args.symbol, exc)
             # Не start'уем без правильного плеча — это критичная safety
