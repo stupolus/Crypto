@@ -15,6 +15,7 @@ from parsers.macro.fred_adapter import FREDAdapter, FREDFetcher, FREDSnapshot
 from parsers.macro.fred_http_fetcher import FREDHttpFetcher
 from parsers.macro.models import MacroSnapshot, YfinanceQuote
 from parsers.macro.settings import FREDSettings
+from parsers.macro.yahoo_http_fetcher import YahooHttpFetcher
 from parsers.macro.yfinance_adapter import YahooFetcher, YfinanceAdapter
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "MacroContextBuilder",
     "MacroSnapshot",
     "YahooFetcher",
+    "YahooHttpFetcher",
     "YfinanceAdapter",
     "YfinanceQuote",
     "build_fred_adapter_from_env",
