@@ -64,6 +64,7 @@ from core.postmortem import (
     summaries_to_prompt_text,
 )
 from core.risk import RiskEngine
+from core.safety import HaltFlag
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
 from parsers.macro.fred_adapter import FREDAdapter
@@ -179,6 +180,7 @@ async def _handle_closed_candle_with_llm(
     outcome_logger: TradeOutcomeLogger | None = None,
     past_mistakes_retriever: PastMistakesRetriever | None = None,
     exit_tracker: ExitTracker | None = None,
+    halt_flag: HaltFlag | None = None,
 ) -> None:
     """Закрытая свеча → strategy → llm_gate → place_order.
 
@@ -210,6 +212,22 @@ async def _handle_closed_candle_with_llm(
         await alerter.send_critical(f"strategy.on_candle_close failed: {exc}")
         return
     if request is None:
+        return
+
+    # Emergency halt check: если флаг существует, не открываем новую сделку.
+    # Открытые позиции защищены биржевыми SL/TP, их не трогаем.
+    if halt_flag is not None and halt_flag.is_set():
+        reason = halt_flag.read_reason()
+        reason_str = f"{reason.source}: {reason.note}" if reason else "unknown"
+        logger.warning(
+            "HALT flag active — skipping signal %s %s (reason: %s)",
+            request.side,
+            request.symbol,
+            reason_str,
+        )
+        await alerter.send_warning(
+            f"HALT active on {request.symbol} ({reason_str}) — signal skipped"
+        )
         return
 
     logger.info(
@@ -387,6 +405,7 @@ async def _candle_loop_llm(
     outcome_logger: TradeOutcomeLogger | None,
     past_mistakes_retriever: PastMistakesRetriever | None,
     exit_tracker: ExitTracker | None,
+    halt_flag: HaltFlag | None,
 ) -> None:
     interval_ms = _interval_to_ms(args.interval)
     channel = f"{args.symbol}@kline_{args.interval}"
@@ -419,6 +438,7 @@ async def _candle_loop_llm(
                 outcome_logger,
                 past_mistakes_retriever,
                 exit_tracker,
+                halt_flag,
             )
 
 
@@ -479,6 +499,17 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
             args.outcomes_db,
         )
 
+    halt_flag: HaltFlag | None = None
+    if args.halt_flag_file:
+        halt_flag = HaltFlag(Path(args.halt_flag_file))
+        if halt_flag.is_set():
+            reason = halt_flag.read_reason()
+            logger.warning(
+                "HALT flag already set on startup: %s",
+                f"{reason.source}: {reason.note}" if reason else "unknown",
+            )
+        logger.info("Safety: halt_flag enabled (%s)", args.halt_flag_file)
+
     async with BingXClient(settings=settings) as client:
         public_api = PublicAPI(client, client.config)
         private_api = PrivateAPI(client, journal=journal, metrics=metrics)
@@ -532,6 +563,7 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     outcome_logger=outcome_logger,
                     past_mistakes_retriever=past_mistakes_retriever,
                     exit_tracker=exit_tracker,
+                    halt_flag=halt_flag,
                 )
             finally:
                 stop_event.set()
@@ -569,6 +601,13 @@ def main() -> None:
         "--outcomes-db",
         default="ops/llm-outcomes.sqlite",
         help="Путь к Layer 6 TradeOutcomeLogger БД. Пустая строка отключает.",
+    )
+    parser.add_argument(
+        "--halt-flag-file",
+        default="/var/lib/crypto/halt",
+        help="Path to emergency halt flag. Если файл exists — runner отказывается "
+        "открывать новые сделки. touch файла = emergency stop без kill systemd. "
+        "Пустая строка отключает проверку.",
     )
     parser.add_argument("--heartbeat-file", default=None)
     parser.add_argument("--log-level", default="INFO")
