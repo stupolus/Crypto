@@ -22,6 +22,4 @@ class ApifyTwitterScraper(Protocol):
     fetch_recent(handles, since_ts_ms) → список raw tweet dicts.
     """
 
-    async def fetch_recent(
-        self, handles: list[str], since_ts_ms: int
-    ) -> list[dict[str, Any]]: ...
+    async def fetch_recent(self, handles: list[str], since_ts_ms: int) -> list[dict[str, Any]]: ...
