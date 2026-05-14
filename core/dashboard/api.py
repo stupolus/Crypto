@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.dashboard.news import NewsAggregator, news_item_to_dict
 from core.dashboard.state import (
     DashboardState,
     agents_to_dicts,
@@ -30,6 +31,7 @@ def create_app(
     halt_flag_file: Path | str | None = "/var/lib/crypto/halt",
     heartbeat_file: Path | str | None = "/var/lib/crypto/llm-runner.heartbeat",
     cors_origins: list[str] | None = None,
+    news_aggregator: NewsAggregator | None = None,
 ) -> FastAPI:
     """Собрать FastAPI app с одним DashboardState.
 
@@ -50,6 +52,7 @@ def create_app(
         halt_flag_file=halt_flag_file,
         heartbeat_file=heartbeat_file,
     )
+    news = news_aggregator or NewsAggregator()
 
     # CORS: dev server (vite на :5173) + prod (через nginx — same origin).
     origins = cors_origins or [
@@ -121,5 +124,12 @@ def create_app(
         if limit < 1 or limit > 1000:
             raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
         return {"points": state.equity_curve(limit=limit)}
+
+    @app.get("/api/news")
+    def get_news(limit: int = 30) -> dict[str, Any]:
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be in [1, 100]")
+        items = news.get(limit=limit)
+        return {"items": [news_item_to_dict(i) for i in items]}
 
     return app
