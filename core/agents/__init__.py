@@ -38,6 +38,7 @@ from core.agents.factory import AgentFactoryError, build_default_team, build_moc
 from core.agents.llm_gate import LLMGateResult, llm_gate
 from core.agents.macro_analyst import MacroAnalystAgent
 from core.agents.market_analyst import MarketAnalystAgent
+from core.agents.market_context_builder import MarketBuilderConfig, MarketContextBuilder
 from core.agents.mock import MockAgent
 from core.agents.order_request_bridge import build_signal_candidate
 from core.agents.risk_overseer import RiskOverseerAgent
@@ -59,6 +60,8 @@ __all__ = [
     "MacroAnalystAgent",
     "MacroContextData",
     "MarketAnalystAgent",
+    "MarketBuilderConfig",
+    "MarketContextBuilder",
     "MarketContextData",
     "MockAgent",
     "RiskOverseerAgent",
