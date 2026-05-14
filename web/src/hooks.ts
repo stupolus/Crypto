@@ -1,6 +1,38 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
+ * SSE hook: подписывается на /stream/events и обновляет state при каждом
+ * `event: <eventName>` от сервера. Auto-reconnect при разрыве (стандарт
+ * EventSource).
+ */
+export function useSse<T>(
+  url: string,
+  eventName: string,
+): { data: T | null; connected: boolean } {
+  const [data, setData] = useState<T | null>(null);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const es = new EventSource(url);
+    es.addEventListener("open", () => setConnected(true));
+    es.addEventListener("error", () => setConnected(false));
+    es.addEventListener(eventName, (ev) => {
+      try {
+        const payload = JSON.parse((ev as MessageEvent).data);
+        setData(payload as T);
+      } catch {
+        // ignore malformed
+      }
+    });
+    return () => {
+      es.close();
+    };
+  }, [url, eventName]);
+
+  return { data, connected };
+}
+
+/**
  * Polling hook: вызывает loader каждые intervalMs миллисекунд.
  * Возвращает {data, error, loading}. Hot-swap: первый запрос показывает loading,
  * последующие — silent refresh (loading остаётся false если data уже есть).
