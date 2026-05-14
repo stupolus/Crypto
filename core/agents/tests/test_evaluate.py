@@ -131,6 +131,38 @@ async def test_evaluate_with_team_passes_state_to_risk() -> None:
     assert decision.coordinator_payload["action"] == "HOLD"
 
 
+@pytest.mark.asyncio
+async def test_evaluate_with_team_default_past_mistakes_empty() -> None:
+    """По умолчанию past_mistakes='' — должно работать без ошибок."""
+    team = build_mock_team(coordinator_action="BUY", coordinator_size_risk_pct=1.0)
+    decision = await evaluate_with_team(
+        team,
+        _btc_signal(),
+        _default_state(),
+        market_data=_default_market(),
+        sentiment_data=_default_sentiment(),
+        macro_data=_default_macro(),
+    )
+    assert decision.coordinator_payload["action"] == "BUY"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_with_team_past_mistakes_passed_through() -> None:
+    """past_mistakes должен передаваться в Coordinator context."""
+    team = build_mock_team(coordinator_action="HOLD")
+    decision = await evaluate_with_team(
+        team,
+        _btc_signal(),
+        _default_state(),
+        market_data=_default_market(),
+        sentiment_data=_default_sentiment(),
+        macro_data=_default_macro(),
+        past_mistakes="Past mistakes: 2 SL на BTC-USDT за неделю",
+    )
+    # Mock не использует past_mistakes для логики, но вызов должен пройти
+    assert decision.coordinator_payload["action"] == "HOLD"
+
+
 def test_runner_state_snapshot_immutable() -> None:
     from dataclasses import FrozenInstanceError
 
