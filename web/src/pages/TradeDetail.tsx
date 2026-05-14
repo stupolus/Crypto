@@ -2,10 +2,16 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { usePolling, fmtTime, fmtDate, fmtNum, fmtPct } from "../hooks";
 import { Section } from "./Overview";
+import CandleChart from "../components/CandleChart";
 
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
   const { data, error } = usePolling(() => api.trade(id!), 10000, [id]);
+  const { data: candles } = usePolling(
+    () => (data ? api.candles(data.symbol, "15m", 96) : Promise.resolve({ candles: [] } as any)),
+    30000,
+    [data?.symbol],
+  );
 
   if (error) {
     return (
@@ -101,6 +107,34 @@ export default function TradeDetail() {
           <KV k="Date" v={fmtDate(data.entry_time_ms)} />
         </div>
       </div>
+
+      {/* Candle chart with entry/exit markers */}
+      {candles && candles.candles && candles.candles.length > 0 && (
+        <Section title={`${data.symbol} · 15m chart with markers`}>
+          <CandleChart
+            candles={candles.candles}
+            markers={[
+              {
+                time_sec: Math.floor(data.entry_time_ms / 1000),
+                price: parseFloat(data.entry_price),
+                type: "entry",
+                side: data.side as "BUY" | "SELL",
+                label: `ENTRY ${data.side} ${data.entry_price}`,
+              },
+              ...(data.exit_time_ms && data.exit_price
+                ? [
+                    {
+                      time_sec: Math.floor(data.exit_time_ms / 1000),
+                      price: parseFloat(data.exit_price),
+                      type: "exit" as const,
+                      label: `${data.exit_reason ?? "EXIT"} ${data.exit_price}`,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </Section>
+      )}
 
       {/* LLM payloads */}
       <Section title="Signal Candidate">

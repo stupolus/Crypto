@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from core.dashboard.candles import CandlesFetcher, candle_to_dict
 from core.dashboard.news import NewsAggregator, news_item_to_dict
 from core.dashboard.state import (
     DashboardState,
@@ -32,6 +33,7 @@ def create_app(
     heartbeat_file: Path | str | None = "/var/lib/crypto/llm-runner.heartbeat",
     cors_origins: list[str] | None = None,
     news_aggregator: NewsAggregator | None = None,
+    candles_fetcher: CandlesFetcher | None = None,
 ) -> FastAPI:
     """Собрать FastAPI app с одним DashboardState.
 
@@ -53,6 +55,7 @@ def create_app(
         heartbeat_file=heartbeat_file,
     )
     news = news_aggregator or NewsAggregator()
+    candles = candles_fetcher or CandlesFetcher()
 
     # CORS: dev server (vite на :5173) + prod (через nginx — same origin).
     origins = cors_origins or [
@@ -131,5 +134,21 @@ def create_app(
             raise HTTPException(status_code=400, detail="limit must be in [1, 100]")
         items = news.get(limit=limit)
         return {"items": [news_item_to_dict(i) for i in items]}
+
+    @app.get("/api/candles")
+    def get_candles(
+        symbol: str = "BTC-USDT",
+        interval: str = "15m",
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        try:
+            cs = candles.get(symbol, interval, limit)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return {
+            "symbol": symbol,
+            "interval": interval,
+            "candles": [candle_to_dict(c) for c in cs],
+        }
 
     return app
