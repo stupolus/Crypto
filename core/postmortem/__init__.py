@@ -8,6 +8,7 @@
 Hot path: только writes. Reads — offline / weekly review.
 """
 
+from core.postmortem.exit_tracker import ExitTracker
 from core.postmortem.logger import TradeOutcomeLogger
 from core.postmortem.mistake_classifier import (
     MistakeClassifierAgent,
@@ -36,6 +37,7 @@ __all__ = [
     "DecisionContext",
     "ExitData",
     "ExitReason",
+    "ExitTracker",
     "MistakeClassification",
     "MistakeClassifierAgent",
     "OrderSide",
