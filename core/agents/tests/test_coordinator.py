@@ -34,6 +34,7 @@ def _valid_context() -> dict[str, Any]:
         "sentiment_analyst_json": '{"sentiment_score": 0.4}',
         "risk_overseer_json": '{"approved": true, "max_risk_pct": 1.0}',
         "macro_analyst_json": '{"regime": "RISK_ON"}',
+        "past_mistakes": "",  # Layer 6 optional, default empty
     }
 
 

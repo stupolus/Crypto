@@ -8,6 +8,8 @@ Risk Overseer + Macro и синтезирует финальное TradeProposal
 2. Если composite confidence < 0.6 → action="HOLD"
 3. size_risk_pct ≤ Risk Overseer's max_risk_pct (cap не превышаем)
 4. Если Sentiment сильно negative + Market в BREAKDOWN_PENDING → caution++
+5. Layer 6 past_mistakes (если переданы) — учитываем при corruption
+   confidence: много recent SL'ков на символе → ослабить confidence.
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ class CoordinatorAgent(AnthropicAgent):
     - ``sentiment_analyst_json`` — ответ Sentiment Analyst
     - ``risk_overseer_json`` — ответ Risk Overseer (с veto)
     - ``macro_analyst_json`` — ответ Macro Analyst
+    - ``past_mistakes`` — Layer 6 текстовое summary похожих past mistakes
+      (опционально, default "")
 
     Output:
     - ``action`` (BUY/SELL/HOLD)
@@ -54,7 +58,11 @@ class CoordinatorAgent(AnthropicAgent):
         "3. Если composite_confidence < 0.6 → action='HOLD'\n"
         "4. size_risk_pct НЕ превышает Risk Overseer max_risk_pct\n"
         "5. На RISK_OFF / CRISIS regime от Macro Analyst — снижай агрессивность\n"
-        "6. Если Sentiment < -0.5 + Market в BREAKDOWN_PENDING — caution++\n\n"
+        "6. Если Sentiment < -0.5 + Market в BREAKDOWN_PENDING — caution++\n"
+        "7. Past mistakes (Layer 6): если на этом символе уже было 2+ SL за "
+        "последнее время — ослабь composite_confidence на 0.1, и если "
+        "получается < 0.6 — переключи action на HOLD. Если past_mistakes "
+        "пустое — это поле игнорируй.\n\n"
         "reasoning — на **русском**, 1-3 предложения. Будет в journal и Telegram.\n\n"
         "Ответ строго JSON, без natural-language вне JSON."
     )
@@ -66,6 +74,8 @@ class CoordinatorAgent(AnthropicAgent):
         "Sentiment Analyst: {sentiment_analyst_json}\n"
         "Risk Overseer: {risk_overseer_json}\n"
         "Macro Analyst: {macro_analyst_json}\n\n"
+        "Past mistakes context (Layer 6 — may be empty):\n"
+        "{past_mistakes}\n\n"
         "Output JSON:\n"
         '{{"action": "BUY|SELL|HOLD", "size_risk_pct": 0..2.0, '
         '"entry_price": "...", "sl_price": "...", "tp_prices": [...], '
