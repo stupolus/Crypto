@@ -8,6 +8,7 @@
 Hot path: только writes. Reads — offline / weekly review.
 """
 
+from core.postmortem.logger import TradeOutcomeLogger
 from core.postmortem.models import (
     DecisionContext,
     ExitData,
@@ -22,4 +23,5 @@ __all__ = [
     "ExitReason",
     "OrderSide",
     "TradeOutcome",
+    "TradeOutcomeLogger",
 ]
