@@ -27,8 +27,8 @@ from core.postmortem.models import (
     TradeOutcome,
 )
 from core.postmortem.past_mistakes import (
-    PastMistakeSummary,
     PastMistakesRetriever,
+    PastMistakeSummary,
     summaries_to_prompt_text,
 )
 
