@@ -68,6 +68,7 @@ from core.safety import HaltFlag
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
 from parsers.macro.fred_adapter import FREDAdapter
+from parsers.macro.yahoo_http_fetcher import YahooHttpFetcher
 from parsers.macro.yfinance_adapter import YfinanceAdapter
 from runners.live_runner import (
     RunnerState,
@@ -83,17 +84,6 @@ from runners.live_runner import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _NoopYahooFetcher:
-    """Stub реализация YahooFetcher Protocol — отдаёт пустой dict.
-
-    Заглушка пока не подключён production yfinance fetcher (отдельный PR).
-    Macro метрики (DXY/VIX/SPX/etc.) идут как defaults "0".
-    """
-
-    def fetch(self, tickers: list[str]) -> dict[str, Any]:
-        return {}
 
 
 class _NoopFREDFetcher:
@@ -472,11 +462,9 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
     strategy = _build_strategy(args.strategy, risk)
     logger.info("strategy initialized: %s", args.strategy)
 
-    # Macro: yfinance + (опционально) FRED
-    # NB: production yfinance fetcher пока не подключён (отдельный PR),
-    # используем stub — yfinance метрики (DXY/VIX/SPX) пойдут как defaults "0",
-    # Layer 3 промпт обрабатывает.
-    yf = YfinanceAdapter(fetcher=_NoopYahooFetcher())
+    # Macro: yfinance (через httpx Yahoo quote API, без яндекс-deps) + FRED
+    yf = YfinanceAdapter(fetcher=YahooHttpFetcher())
+    logger.info("Yahoo fetcher: HTTP (DXY/VIX/SPX/NDX/Gold/Oil/^TNX live)")
     try:
         fred = build_fred_adapter_from_env()
         logger.info("FRED adapter built from env")

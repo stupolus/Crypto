@@ -18,7 +18,6 @@ from runners.llm_runner import (
     _build_decision_context,
     _build_runner_state_snapshot,
     _NoopFREDFetcher,
-    _NoopYahooFetcher,
 )
 
 
@@ -74,26 +73,9 @@ def test_build_snapshot_with_position_no_tp() -> None:
     assert snap.open_positions[0]["take_profit_price"] == "0"
 
 
-def test_noop_yahoo_fetcher_returns_empty() -> None:
-    fetcher = _NoopYahooFetcher()
-    assert fetcher.fetch(["DX-Y.NYB", "^VIX"]) == {}
-
-
 def test_noop_fred_fetcher_returns_empty() -> None:
     fetcher = _NoopFREDFetcher()
     assert fetcher.fetch_latest(["DFF", "UNRATE"]) == {}
-
-
-def test_noop_yahoo_satisfies_protocol() -> None:
-    """Проверяем что NoopYahooFetcher используется в YfinanceAdapter без ошибок."""
-    from parsers.macro.yfinance_adapter import YfinanceAdapter
-
-    adapter = YfinanceAdapter(fetcher=_NoopYahooFetcher())
-    snap = adapter.snapshot()
-    # Все поля будут None (warning'и про отсутствие тикеров)
-    assert snap.dxy is None
-    assert snap.vix is None
-    assert len(snap.warnings) > 0
 
 
 def test_noop_fred_satisfies_protocol() -> None:
