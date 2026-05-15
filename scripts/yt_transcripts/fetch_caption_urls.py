@@ -14,29 +14,36 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 LANG_PRIORITY = ("ru-orig", "ru", "en-orig", "en")
 
 
-def pick_track(info):
+def pick_track(
+    info: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
     auto = info.get("automatic_captions") or {}
     subs = info.get("subtitles") or {}
-    for src_name, src in (("subtitles", subs), ("automatic", auto)):
+    sources: tuple[tuple[str, dict[str, Any]], ...] = (
+        ("subtitles", subs),
+        ("automatic", auto),
+    )
+    for src_name, src in sources:
         for lang in LANG_PRIORITY:
             if lang in src:
                 for f in src[lang]:
                     if f.get("ext") == "json3":
-                        return lang, src_name, f["url"]
+                        return lang, src_name, str(f["url"])
     # fallback: any *-orig first, then anything
-    for src_name, src in (("subtitles", subs), ("automatic", auto)):
+    for src_name, src in sources:
         for lang in sorted(src, key=lambda k: (not k.endswith("-orig"), k)):
             for f in src[lang]:
                 if f.get("ext") == "json3":
-                    return lang, src_name, f["url"]
+                    return lang, src_name, str(f["url"])
     return None, None, None
 
 
-def extract(vid):
+def extract(vid: str) -> dict[str, Any]:
     cmd = [
         "yt-dlp",
         "--no-check-certificate",
@@ -49,15 +56,21 @@ def extract(vid):
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if p.returncode != 0 or not p.stdout.strip():
         raise RuntimeError((p.stderr or "no output")[-300:])
-    return json.loads(p.stdout)
+    data: dict[str, Any] = json.loads(p.stdout)
+    return data
 
 
-def main():
-    videos = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+def main() -> None:
+    videos: list[dict[str, Any]] = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     out_path = Path(sys.argv[2])
-    manifest = []
+    manifest: list[dict[str, Any]] = []
     for v in videos:
-        rec = {"n": v["n"], "kind": v["kind"], "id": v["id"], "title": v["title"]}
+        rec: dict[str, Any] = {
+            "n": v["n"],
+            "kind": v["kind"],
+            "id": v["id"],
+            "title": v["title"],
+        }
         for attempt in (1, 2):
             try:
                 info = extract(v["id"])
@@ -75,7 +88,10 @@ def main():
                 if attempt == 1:
                     time.sleep(5)
         manifest.append(rec)
-        out_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+        out_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=1),
+            encoding="utf-8",
+        )
         print(
             f"[{v['n']:>3}/{len(videos)}] {v['id']} -> {rec.get('status')} {rec.get('lang', '')}",
             flush=True,

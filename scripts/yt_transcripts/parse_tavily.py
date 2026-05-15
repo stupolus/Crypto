@@ -12,22 +12,24 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 BASE_URL = "https://www.youtube.com/watch?v="
 
 
-def load_json3(raw):
+def load_json3(raw: str) -> dict[str, Any]:
     s = raw.strip()
     if s.startswith("```"):
         s = s.split("\n", 1)[1].rsplit("```", 1)[0]
     i = s.find("{")
     if i > 0:
         s = s[i:]
-    return json.loads(s)
+    data: dict[str, Any] = json.loads(s)
+    return data
 
 
-def to_text(j):
-    out = []
+def to_text(j: dict[str, Any]) -> tuple[str, int]:
+    out: list[str] = []
     for e in j.get("events", []):
         line = "".join(seg.get("utf8", "") for seg in (e.get("segs") or []))
         line = line.strip()
@@ -37,7 +39,8 @@ def to_text(j):
     text = re.sub(r"\s+", " ", text).replace(" .", ".").strip()
     # soft-wrap into sentence-ish paragraphs for readability
     sentences = re.split(r"(?<=[.!?])\s+", text)
-    paras, buf = [], []
+    paras: list[str] = []
+    buf: list[str] = []
     for sn in sentences:
         buf.append(sn)
         if len(buf) >= 4:
@@ -48,30 +51,30 @@ def to_text(j):
     return "\n\n".join(paras), len(text)
 
 
-def vid_from_url(url):
+def vid_from_url(url: str) -> str | None:
     m = re.search(r"[?&]v=([A-Za-z0-9_-]{6,})", url)
     return m.group(1) if m else None
 
 
-def fmt_dur(sec):
+def fmt_dur(sec: float | None) -> str:
     if not sec:
         return "неизвестно"
-    sec = int(sec)
-    return f"{sec // 60:02d}:{sec % 60:02d}"
+    s = int(sec)
+    return f"{s // 60:02d}:{s % 60:02d}"
 
 
-def main():
-    raw_manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    manifest = {r["id"]: r for r in raw_manifest}
+def main() -> None:
+    raw_manifest: list[dict[str, Any]] = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    manifest: dict[str, dict[str, Any]] = {r["id"]: r for r in raw_manifest}
     outdir = Path(sys.argv[2])
     outdir.mkdir(parents=True, exist_ok=True)
-    done = []
+    done: list[tuple[int, str, int]] = []
     for tf in sys.argv[3:]:
-        data = json.loads(Path(tf).read_text(encoding="utf-8"))
+        data: dict[str, Any] = json.loads(Path(tf).read_text(encoding="utf-8"))
         for res in data.get("results", []):
             vid = vid_from_url(res.get("url", ""))
-            rec = manifest.get(vid)
-            if not rec:
+            rec = manifest.get(vid) if vid else None
+            if not rec or not vid:
                 print(f"SKIP unmatched url {res.get('url', '')[:80]}")
                 continue
             try:
