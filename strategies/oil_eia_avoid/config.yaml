@@ -1,0 +1,28 @@
+# OilEiaAvoid — CL-USDT (WTI crude), 15m, both-sided
+# Параметры обоснованы в plans/19-asset-strategies.md §«Oil».
+# Blackout вокруг EIA Petroleum Status — через DI календарь (см. calendar.py).
+
+symbol: CL-USDT
+timeframe: 15m
+
+# Donchian — как BTC, oil intraday вол OK
+donchian_n: 20
+
+# ATR
+atr_window: 14
+atr_percentile_min: 0.5
+atr_percentile_lookback: 200
+
+# Volume
+volume_sma_window: 20
+volume_multiplier: 1.5
+
+# Funding (oil perp funding обычно tighter)
+funding_rate_max_pct: 0.03
+
+# Stop / TP — стандартные крипта-параметры подходят
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+tp2_trailing_ema: 21
+
+risk_tier: B

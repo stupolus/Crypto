@@ -77,11 +77,71 @@ class SetBlacklist:
         return symbol in self._symbols
 
 
+class WeeklyEventCalendar:
+    """Recurring weekly pause-окно: каждый weekday X с time A до time B UTC.
+
+    Применение — EIA Petroleum Status Report (Wed 14:30 UTC ±N мин),
+    funding settlement, открытие US session, и т.п. Несколько окон
+    можно собрать в один календарь через несколько экземпляров +
+    composite-обёртку.
+
+    Args:
+        weekday: 0=Monday..6=Sunday (стандарт ``datetime.weekday``)
+        start_hour: UTC hour, 0..23
+        start_minute: UTC minute, 0..59
+        end_hour: UTC hour, 0..23 (>= start_hour same-day)
+        end_minute: UTC minute, 0..59
+    """
+
+    def __init__(
+        self,
+        *,
+        weekday: int,
+        start_hour: int,
+        start_minute: int = 0,
+        end_hour: int | None = None,
+        end_minute: int = 0,
+    ) -> None:
+        if not 0 <= weekday <= 6:
+            raise ValueError(f"weekday must be 0..6, got {weekday}")
+        if not 0 <= start_hour <= 23:
+            raise ValueError(f"start_hour must be 0..23, got {start_hour}")
+        if end_hour is None:
+            end_hour = start_hour
+        self._weekday = weekday
+        self._start_min_of_day = start_hour * 60 + start_minute
+        self._end_min_of_day = end_hour * 60 + end_minute
+        if self._end_min_of_day < self._start_min_of_day:
+            raise ValueError("end must be >= start (same-day window only)")
+
+    def is_paused(self, timestamp_ms: int) -> bool:
+        # Импорт здесь чтобы не тянуть datetime в hot-path module-level.
+        from datetime import UTC, datetime
+
+        dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+        if dt.weekday() != self._weekday:
+            return False
+        mod = dt.hour * 60 + dt.minute
+        return self._start_min_of_day <= mod <= self._end_min_of_day
+
+
+class CompositeNewsCalendar:
+    """Объединение нескольких NewsCalendar — paused если ЛЮБОЙ paused."""
+
+    def __init__(self, calendars: Iterable[NewsCalendar]) -> None:
+        self._calendars = tuple(calendars)
+
+    def is_paused(self, timestamp_ms: int) -> bool:
+        return any(c.is_paused(timestamp_ms) for c in self._calendars)
+
+
 __all__ = [
     "Blacklist",
+    "CompositeNewsCalendar",
     "FundingProvider",
     "NewsCalendar",
     "SetBlacklist",
     "StaticFundingProvider",
     "StaticNewsCalendar",
+    "WeeklyEventCalendar",
 ]
