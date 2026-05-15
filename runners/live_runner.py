@@ -112,6 +112,37 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
         return UsSessionBreakoutStrategy(config=us_get_default_config(), risk_engine=risk_engine)
     if name == "trend_ema_4h":
         return TrendEmaStrategy(config=trend_get_default_config(), risk_engine=risk_engine)
+    if name == "gold_safety_haven":
+        from strategies.gold_safety_haven import get_default_config as gold_cfg
+
+        return BtcBreakoutStrategy(config=gold_cfg(), risk_engine=risk_engine)
+    if name == "oil_eia_avoid":
+        from strategies.oil_eia_avoid import (
+            build_eia_news_calendar,
+        )
+        from strategies.oil_eia_avoid import (
+            get_default_config as oil_cfg,
+        )
+
+        return BtcBreakoutStrategy(
+            config=oil_cfg(),
+            risk_engine=risk_engine,
+            news_calendar=build_eia_news_calendar(),
+        )
+    if name == "stock_earnings_avoid":
+        from strategies.stock_earnings_avoid import (
+            build_earnings_blackout_calendar,
+        )
+        from strategies.stock_earnings_avoid import (
+            get_default_config as stock_cfg,
+        )
+
+        cfg = stock_cfg()
+        return BtcBreakoutStrategy(
+            config=cfg,
+            risk_engine=risk_engine,
+            news_calendar=build_earnings_blackout_calendar(cfg.symbol),
+        )
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -540,7 +571,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BingX live runner")
     parser.add_argument(
         "--strategy",
-        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
+        choices=[
+            "btc_breakout",
+            "us_session_breakout",
+            "trend_ema_4h",
+            "gold_safety_haven",
+            "oil_eia_avoid",
+            "stock_earnings_avoid",
+        ],
         required=True,
     )
     parser.add_argument("--symbol", default="BTC-USDT")
