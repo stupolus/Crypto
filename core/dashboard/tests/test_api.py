@@ -249,6 +249,92 @@ def test_symbol_filter_and_endpoint(tmp_path: Path) -> None:
     assert all(t["symbol"] == "XAUT-USDT" for t in only_xaut)
 
 
+def test_strategy_stats_groups_by_symbol(tmp_path: Path) -> None:
+    """/api/strategy_stats группирует outcomes по SYMBOL_TO_STRATEGY mapping."""
+    from core.postmortem.models import DecisionContext, ExitData
+
+    db = tmp_path / "outcomes.sqlite"
+    log = TradeOutcomeLogger(db)
+
+    def _ctx(trade_id: str, sym: str) -> DecisionContext:
+        return DecisionContext(
+            trade_id=trade_id,
+            symbol=sym,
+            side="BUY",
+            entry_time_ms=1_700_000_000_000,
+            entry_price=Decimal("80500"),
+            size=Decimal("0.1"),
+            signal_candidate={"action": "BUY"},
+            market_analyst={},
+            sentiment_analyst={},
+            risk_overseer={},
+            macro_analyst={},
+            coordinator={},
+            latency_decision_ms=420,
+        )
+
+    # 2 BTC trades (1 win, 1 loss), 1 XAUT win, 1 XAUT open
+    log.record_entry(_ctx("b1", "BTC-USDT"))
+    log.record_exit(
+        "b1",
+        ExitData(
+            exit_time_ms=1_700_000_900_000,
+            exit_price=Decimal("82000"),
+            pnl_usd=Decimal("150"),
+            pnl_pct=Decimal("1.86"),
+            exit_reason="TP1",
+            holding_time_min=10,
+        ),
+    )
+    log.record_entry(_ctx("b2", "BTC-USDT"))
+    log.record_exit(
+        "b2",
+        ExitData(
+            exit_time_ms=1_700_000_900_001,
+            exit_price=Decimal("79000"),
+            pnl_usd=Decimal("-100"),
+            pnl_pct=Decimal("-1.2"),
+            exit_reason="SL",
+            holding_time_min=10,
+        ),
+    )
+    log.record_entry(_ctx("x1", "XAUT-USDT"))
+    log.record_exit(
+        "x1",
+        ExitData(
+            exit_time_ms=1_700_000_900_002,
+            exit_price=Decimal("2150"),
+            pnl_usd=Decimal("50"),
+            pnl_pct=Decimal("2.4"),
+            exit_reason="TP1",
+            holding_time_min=120,
+        ),
+    )
+    log.record_entry(_ctx("x2", "XAUT-USDT"))  # still open
+
+    app = create_app(outcomes_db=db, halt_flag_file=None, heartbeat_file=None)
+    c = TestClient(app)
+    data = c.get("/api/strategy_stats").json()
+    by_strat = {s["strategy"]: s for s in data["strategies"]}
+
+    # btc_breakout: 2 closed, 1 win, 1 loss, 50% wr, PF = 150/100 = 1.50
+    assert by_strat["btc_breakout"]["total"] == 2
+    assert by_strat["btc_breakout"]["wins"] == 1
+    assert by_strat["btc_breakout"]["losses"] == 1
+    assert by_strat["btc_breakout"]["win_rate_pct"] == 50.0
+    assert by_strat["btc_breakout"]["profit_factor"] == "1.50"
+    assert by_strat["btc_breakout"]["total_pnl_usd"] == "50"
+
+    # gold_safety_haven: 1 closed win + 1 open
+    assert by_strat["gold_safety_haven"]["total"] == 2
+    assert by_strat["gold_safety_haven"]["closed"] == 1
+    assert by_strat["gold_safety_haven"]["open"] == 1
+    assert by_strat["gold_safety_haven"]["wins"] == 1
+    assert by_strat["gold_safety_haven"]["win_rate_pct"] == 100.0
+    assert by_strat["gold_safety_haven"]["profit_factor"] == "inf"  # no losses
+    assert by_strat["gold_safety_haven"]["total_pnl_usd"] == "50"
+
+
 def test_multi_db_merge(tmp_path: Path) -> None:
     """Multi-runner setup: outcomes_db = список DB → дашборд сливает все.
 

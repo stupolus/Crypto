@@ -152,6 +152,11 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"trade {trade_id} not found")
         return detail
 
+    @app.get("/api/strategy_stats")
+    def get_strategy_stats() -> dict[str, Any]:
+        """Per-strategy агрегация для UI «strategy leaderboard»."""
+        return {"strategies": state.strategy_stats()}
+
     @app.get("/api/equity")
     def get_equity(limit: int = 100) -> dict[str, Any]:
         if limit < 1 or limit > 1000:

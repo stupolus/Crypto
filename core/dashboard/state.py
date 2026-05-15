@@ -170,6 +170,59 @@ class DashboardState:
                 return _serialize_outcome_full(outcome)
         return None
 
+    def strategy_stats(self) -> list[dict[str, Any]]:
+        """Per-strategy агрегация: win_rate, profit_factor, total_pnl_usd.
+
+        Strategy выводится из symbol через SYMBOL_TO_STRATEGY (1:1 в
+        текущей конфигурации). Если symbol не в mapping → "unknown".
+
+        Используется в дашборде для «как каждая стратегия работает».
+        """
+        by_strategy: dict[str, list[TradeOutcome]] = {}
+        for o in self._all_outcomes_desc():
+            strat = SYMBOL_TO_STRATEGY.get(o.symbol, "unknown")
+            by_strategy.setdefault(strat, []).append(o)
+
+        result: list[dict[str, Any]] = []
+        for strat, outcomes in sorted(by_strategy.items()):
+            closed = [o for o in outcomes if o.is_closed and o.pnl_usd is not None]
+            wins = [o for o in closed if o.is_win]
+            losses = [o for o in closed if o.is_loss]
+            total_pnl: Decimal = sum(
+                (o.pnl_usd for o in closed if o.pnl_usd is not None),
+                start=Decimal("0"),
+            )
+            sum_wins: Decimal = sum(
+                (o.pnl_usd for o in wins if o.pnl_usd is not None),
+                start=Decimal("0"),
+            )
+            sum_losses_abs: Decimal = sum(
+                (abs(o.pnl_usd) for o in losses if o.pnl_usd is not None),
+                start=Decimal("0"),
+            )
+            profit_factor: str | None
+            if sum_losses_abs > 0:
+                profit_factor = format(sum_wins / sum_losses_abs, ".2f")
+            elif sum_wins > 0:
+                profit_factor = "inf"
+            else:
+                profit_factor = None
+            result.append(
+                {
+                    "strategy": strat,
+                    "symbol": outcomes[0].symbol if outcomes else None,
+                    "total": len(outcomes),
+                    "open": sum(1 for o in outcomes if not o.is_closed),
+                    "closed": len(closed),
+                    "wins": len(wins),
+                    "losses": len(losses),
+                    "win_rate_pct": (round(100.0 * len(wins) / len(closed), 1) if closed else 0.0),
+                    "profit_factor": profit_factor,
+                    "total_pnl_usd": str(total_pnl),
+                }
+            )
+        return result
+
     def equity_curve(self, *, limit: int = 100) -> list[dict[str, Any]]:
         """Equity точки из закрытых сделок (running PnL cumulative).
 
@@ -290,6 +343,23 @@ class DashboardState:
 
 
 # ── Module helpers ──────────────────────────────────────────────────────────
+
+
+# Маппинг symbol → strategy. 1:1 в текущей конфигурации. При добавлении
+# новой стратегии — допиши сюда, иначе попадёт в "unknown" в API.
+SYMBOL_TO_STRATEGY: dict[str, str] = {
+    "BTC-USDT": "btc_breakout",
+    "XAUT-USDT": "gold_safety_haven",
+    "NCCO1OILWTI2USD-USDT": "oil_eia_avoid",
+    "NCCO7241OILWTI2USD-USDT": "oil_eia_avoid",
+    "NCSKTSLA2USD-USDT": "stock_earnings_avoid",
+    "NCSKNVDA2USD-USDT": "stock_earnings_avoid",
+    # Legacy aliases
+    "XAU-USDT": "gold_safety_haven",
+    "CL-USDT": "oil_eia_avoid",
+    "TSLA-USDT": "stock_earnings_avoid",
+    "NVDA-USDT": "stock_earnings_avoid",
+}
 
 
 def _trade_summary(o: TradeOutcome) -> TradeSummary:

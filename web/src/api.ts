@@ -103,6 +103,19 @@ export interface CandlesResponse {
   candles: CandleBar[];
 }
 
+export interface StrategyStat {
+  strategy: string;
+  symbol: string | null;
+  total: number;
+  open: number;
+  closed: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  profit_factor: string | null;
+  total_pnl_usd: string;
+}
+
 const API_BASE = ""; // same origin in prod, vite proxy in dev
 
 async function json<T>(path: string): Promise<T> {
@@ -136,6 +149,7 @@ export const api = {
   },
   symbols: () => json<{ symbols: string[] }>("/api/symbols"),
   trade: (id: string) => json<TradeDetail>(`/api/trades/${encodeURIComponent(id)}`),
+  strategyStats: () => json<{ strategies: StrategyStat[] }>("/api/strategy_stats"),
   equity: (limit = 100) => json<{ points: EquityPoint[] }>(`/api/equity?limit=${limit}`),
   news: (limit = 30) => json<{ items: NewsItem[] }>(`/api/news?limit=${limit}`),
   candles: (symbol = "BTC-USDT", interval = "15m", limit = 100) =>
