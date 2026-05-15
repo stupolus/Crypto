@@ -119,13 +119,22 @@ export const api = {
   health: () => json<HealthInfo>("/api/health"),
   status: () => json<StatusResponse>("/api/status"),
   agents: () => json<{ agents: AgentSnapshot[] }>("/api/agents"),
-  trades: (opts: { onlyOpen?: boolean; onlyClosed?: boolean; limit?: number } = {}) => {
+  trades: (
+    opts: {
+      onlyOpen?: boolean;
+      onlyClosed?: boolean;
+      symbol?: string;
+      limit?: number;
+    } = {},
+  ) => {
     const q = new URLSearchParams();
     if (opts.onlyOpen) q.set("only_open", "true");
     if (opts.onlyClosed) q.set("only_closed", "true");
+    if (opts.symbol) q.set("symbol", opts.symbol);
     if (opts.limit) q.set("limit", String(opts.limit));
     return json<{ trades: TradeSummary[] }>(`/api/trades?${q.toString()}`);
   },
+  symbols: () => json<{ symbols: string[] }>("/api/symbols"),
   trade: (id: string) => json<TradeDetail>(`/api/trades/${encodeURIComponent(id)}`),
   equity: (limit = 100) => json<{ points: EquityPoint[] }>(`/api/equity?limit=${limit}`),
   news: (limit = 30) => json<{ items: NewsItem[] }>(`/api/news?limit=${limit}`),

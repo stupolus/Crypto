@@ -7,35 +7,54 @@ type FilterMode = "all" | "open" | "closed";
 
 export default function Trades() {
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [symbol, setSymbol] = useState<string>("");
   const { data, error } = usePolling(
     () =>
       api.trades({
         onlyOpen: filter === "open",
         onlyClosed: filter === "closed",
+        symbol: symbol || undefined,
         limit: 100,
       }),
     7000,
-    [filter],
+    [filter, symbol],
   );
+  const { data: symbolsData } = usePolling(() => api.symbols(), 60000);
 
   return (
     <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-bold uppercase tracking-wider">Trade Journal</h1>
-        <div className="flex gap-1 bg-bg-panel border border-border rounded-md p-1">
-          {(["all", "open", "closed"] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setFilter(mode)}
-              className={`px-3 py-1 text-xs font-mono uppercase rounded transition ${
-                filter === mode
-                  ? "bg-bg-elevated text-gold border border-border-strong"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
+        <div className="flex flex-wrap gap-2 items-center">
+          {symbolsData && symbolsData.symbols.length > 1 && (
+            <select
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              className="bg-bg-panel border border-border rounded-md px-3 py-1 text-xs font-mono text-text-primary"
             >
-              {mode}
-            </button>
-          ))}
+              <option value="">all symbols</option>
+              {symbolsData.symbols.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-1 bg-bg-panel border border-border rounded-md p-1">
+            {(["all", "open", "closed"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setFilter(mode)}
+                className={`px-3 py-1 text-xs font-mono uppercase rounded transition ${
+                  filter === mode
+                    ? "bg-bg-elevated text-gold border border-border-strong"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

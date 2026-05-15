@@ -194,6 +194,61 @@ def test_empty_db(tmp_path: Path) -> None:
     assert all(a["last_payload"] == {} for a in agents)
 
 
+def test_symbol_filter_and_endpoint(tmp_path: Path) -> None:
+    """/api/trades?symbol=X фильтрует по symbol; /api/symbols возвращает список."""
+    from core.postmortem.models import DecisionContext, ExitData
+
+    db = tmp_path / "outcomes.sqlite"
+    log = TradeOutcomeLogger(db)
+
+    def _ctx(trade_id: str, sym: str) -> DecisionContext:
+        return DecisionContext(
+            trade_id=trade_id,
+            symbol=sym,
+            side="BUY",
+            entry_time_ms=1_700_000_000_000,
+            entry_price=Decimal("80500"),
+            size=Decimal("0.1"),
+            signal_candidate={"action": "BUY"},
+            market_analyst={},
+            sentiment_analyst={},
+            risk_overseer={},
+            macro_analyst={},
+            coordinator={},
+            latency_decision_ms=420,
+        )
+
+    log.record_entry(_ctx("b1", "BTC-USDT"))
+    log.record_entry(_ctx("x1", "XAUT-USDT"))
+    log.record_entry(_ctx("x2", "XAUT-USDT"))
+    log.record_exit(
+        "x1",
+        ExitData(
+            exit_time_ms=1_700_000_900_000,
+            exit_price=Decimal("82000"),
+            pnl_usd=Decimal("100"),
+            pnl_pct=Decimal("1.2"),
+            exit_reason="TP1",
+            holding_time_min=10,
+        ),
+    )
+
+    app = create_app(outcomes_db=db, halt_flag_file=None, heartbeat_file=None)
+    c = TestClient(app)
+
+    # /api/symbols возвращает unique sorted
+    symbols = c.get("/api/symbols").json()["symbols"]
+    assert symbols == ["BTC-USDT", "XAUT-USDT"]
+
+    # /api/trades без фильтра → все 3
+    assert len(c.get("/api/trades").json()["trades"]) == 3
+
+    # /api/trades?symbol=XAUT-USDT → только 2
+    only_xaut = c.get("/api/trades?symbol=XAUT-USDT").json()["trades"]
+    assert len(only_xaut) == 2
+    assert all(t["symbol"] == "XAUT-USDT" for t in only_xaut)
+
+
 def test_multi_db_merge(tmp_path: Path) -> None:
     """Multi-runner setup: outcomes_db = список DB → дашборд сливает все.
 
