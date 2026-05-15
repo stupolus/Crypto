@@ -259,6 +259,10 @@ def main() -> None:
             if args.strategy_config is not None
             else liqrev_default_config()
         )
+        # --symbol override применяем ДО backfill (иначе backfill качает
+        # данные не того символа). Общий override ниже это повторит — ok.
+        if args.symbol is not None:
+            strategy_cfg = strategy_cfg.model_copy(update={"symbol": args.symbol})
 
         # Coinglass backfill: liquidation/OI/CVD за диапазон свечей.
         # Без активного плана → пустые провайдеры → no-op (честно 0 сделок).
