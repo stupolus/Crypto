@@ -64,7 +64,7 @@ def _breakout_history(start_ts_ms: int, step_ms: int = 15 * 60_000) -> list[Klin
 
 def test_default_config_loads() -> None:
     cfg = get_default_config()
-    assert cfg.symbol == "TSLA-USDT"
+    assert cfg.symbol == "NCSKTSLA2USD-USDT"
     assert cfg.timeframe == "15m"
     assert cfg.donchian_n == 16
 

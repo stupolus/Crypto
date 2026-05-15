@@ -1,8 +1,11 @@
-# GoldSafetyHaven — XAU-USDT, 1h, LONG-only
+# GoldSafetyHaven — XAUT-USDT (Tether Gold на BingX VST), 1h, LONG-only
 # Все числа обоснованы в plans/19-asset-strategies.md §«Gold».
 # При изменении: сначала правим план (там обоснования), потом сюда.
+#
+# Symbol: XAUT-USDT — Tether Gold (1 XAUT = 1oz gold). На BingX VST это
+# реальное имя для золотого perp. Старое XAU-USDT не существует в BingX.
 
-symbol: XAU-USDT
+symbol: XAUT-USDT
 timeframe: 1h
 
 # Donchian — широкий, gold trends медленнее BTC
