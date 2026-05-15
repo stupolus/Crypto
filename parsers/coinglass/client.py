@@ -36,8 +36,7 @@ logger = logging.getLogger(__name__)
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 _BASE_URL = "https://open-api-v4.coinglass.com"
 _LIQ_HISTORY_PATH = "/api/futures/liquidation/history"
-# Не подтверждён живым ключом (план не активен на 2026-05-15) — править
-# здесь когда план оплачен и реальный ответ проверен smoke-скриптом.
+# Подтверждён живым ключом HOBBYIST 2026-05-15 (OHLC, берём close).
 _OI_HISTORY_PATH = "/api/futures/open-interest/aggregated-history"
 _TIMEOUT_S = 15.0
 
@@ -59,6 +58,16 @@ class CoinglassSettings(BaseSettings):
 
 class CoinglassPlanError(Exception):
     """Coinglass вернул 401 'Upgrade plan' — нужен платный тариф."""
+
+
+def _extract_ts(row: dict[str, Any]) -> int | None:
+    """ts из row по ключам time/timestamp/t. Explicit None (ts=0 валиден,
+    `or`-цепочка ошибочно отбрасывала бы falsy 0)."""
+    for k in ("time", "timestamp", "t"):
+        v = row.get(k)
+        if v is not None:
+            return int(v)
+    return None
 
 
 def _to_decimal(v: Any) -> Decimal:
@@ -153,12 +162,12 @@ class CoinglassClient:
             params["end_time"] = end_time_ms
         out: list[CoinglassLiquidationBucket] = []
         for row in self._get(_LIQ_HISTORY_PATH, params):
-            ts = row.get("time") or row.get("timestamp") or row.get("t")
+            ts = _extract_ts(row)
             if ts is None:
                 continue
             out.append(
                 CoinglassLiquidationBucket(
-                    timestamp_ms=int(ts),
+                    timestamp_ms=ts,
                     long_liquidation_usd=_to_decimal(
                         row.get("long_liquidation_usd")
                         or row.get("longLiquidationUsd")
@@ -200,7 +209,7 @@ class CoinglassClient:
             params["end_time"] = end_time_ms
         out: list[tuple[int, Decimal]] = []
         for row in self._get(self._oi_path, params):
-            ts = row.get("time") or row.get("timestamp") or row.get("t")
+            ts = _extract_ts(row)
             if ts is None:
                 continue
             val = (
@@ -210,7 +219,7 @@ class CoinglassClient:
                 or row.get("value")
                 or 0
             )
-            out.append((int(ts), _to_decimal(val)))
+            out.append((ts, _to_decimal(val)))
         return out
 
     def get_cvd_history(
@@ -243,10 +252,10 @@ class CoinglassClient:
         rows = self._get("/api/futures/taker-buy-sell-volume/history", params)
         timed: list[tuple[int, dict[str, Any]]] = []
         for r in rows:
-            raw_ts = r.get("time") or r.get("timestamp")
-            if raw_ts is None:
+            ts_v = _extract_ts(r)
+            if ts_v is None:
                 continue
-            timed.append((int(raw_ts), r))
+            timed.append((ts_v, r))
         timed.sort(key=lambda x: x[0])
         cvd = Decimal("0")
         out: list[tuple[int, Decimal]] = []
@@ -283,8 +292,8 @@ class CoinglassClient:
             params["end_time"] = end_time_ms
         out: list[tuple[int, Decimal]] = []
         for row in self._get("/api/futures/funding-rate/history", params):
-            ts = row.get("time") or row.get("timestamp")
+            ts = _extract_ts(row)
             if ts is None:
                 continue
-            out.append((int(ts), _to_decimal(row.get("close") or 0)))
+            out.append((ts, _to_decimal(row.get("close") or 0)))
         return out
