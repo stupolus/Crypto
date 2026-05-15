@@ -164,18 +164,42 @@ def _build_request_updates(order_request: OrderRequest, payload: dict[str, Any])
     Возвращает пустой dict если в payload ничего полезного нет — runner
     использует исходный OrderRequest. Невалидные значения (не Decimal,
     ≤ 0) игнорируются с warning.
+
+    SL/TP direction sanity-check: для BUY стоп должен быть НИЖЕ entry,
+    для SELL — ВЫШЕ. Coordinator иногда возвращает SL на неправильной
+    стороне → BingX отказывает с code=101400 «SL Price must be greater
+    than Last Price». Используем strategy-anchor (`attached_stop_loss`)
+    как опорную точку: LLM-SL должен быть на ТОЙ ЖЕ стороне entry, что
+    и strategy-SL. Если direction-противоположный — игнорируем LLM-SL
+    и оставляем strategy-SL (безопасный fallback).
     """
     updates: dict[str, Any] = {}
 
     sl_price = _coerce_decimal(payload.get("sl_price"))
     if sl_price is not None and sl_price != order_request.attached_stop_loss:
-        updates["attached_stop_loss"] = sl_price
+        if _sl_direction_ok(order_request, sl_price):
+            updates["attached_stop_loss"] = sl_price
+        else:
+            logger.warning(
+                "llm_gate: ignoring LLM sl_price=%s — wrong side for %s order (strategy_sl=%s)",
+                sl_price,
+                order_request.side,
+                order_request.attached_stop_loss,
+            )
 
     tp_prices = payload.get("tp_prices")
     if isinstance(tp_prices, list) and tp_prices:
         tp = _coerce_decimal(tp_prices[0])
         if tp is not None and tp != order_request.attached_take_profit:
-            updates["attached_take_profit"] = tp
+            if _tp_direction_ok(order_request, tp):
+                updates["attached_take_profit"] = tp
+            else:
+                logger.warning(
+                    "llm_gate: ignoring LLM tp=%s — wrong side for %s order (strategy_tp=%s)",
+                    tp,
+                    order_request.side,
+                    order_request.attached_take_profit,
+                )
 
     if order_request.order_type == "LIMIT":
         entry = _coerce_decimal(payload.get("entry_price"))
@@ -183,6 +207,47 @@ def _build_request_updates(order_request: OrderRequest, payload: dict[str, Any])
             updates["price"] = entry
 
     return updates
+
+
+def _sl_direction_ok(order_request: OrderRequest, llm_sl: Decimal) -> bool:
+    """SL должен быть на правильной стороне entry. Защита от BingX 101400.
+
+    Strategy эмитит и SL, и TP: для BUY имеем SL < entry < TP; для SELL
+    наоборот TP < entry < SL. Используем midpoint(SL, TP) ≈ entry как
+    anchor «entry-side»:
+    - BUY: оба (strategy_sl, LLM_sl) должны быть < midpoint (ниже entry).
+    - SELL: оба должны быть > midpoint (выше entry).
+
+    Также LLM_sl > 0 (санитарный нижний bound).
+    """
+    if llm_sl <= 0:
+        return False
+    strategy_sl = order_request.attached_stop_loss
+    tp = order_request.attached_take_profit
+    if strategy_sl is None or tp is None:
+        # Без полного anchor (нужны SL и TP) не можем достоверно проверить.
+        # На VST: strategy всегда эмитит оба, так что branch почти не задеваем.
+        return True
+    midpoint = (strategy_sl + tp) / 2
+    if order_request.side == "BUY":
+        # strategy_sl ниже midpoint, LLM_sl тоже должен быть ниже
+        return llm_sl < midpoint
+    # SELL: strategy_sl выше midpoint
+    return llm_sl > midpoint
+
+
+def _tp_direction_ok(order_request: OrderRequest, llm_tp: Decimal) -> bool:
+    """TP должен быть на стороне профита: BUY → выше midpoint; SELL → ниже."""
+    if llm_tp <= 0:
+        return False
+    strategy_sl = order_request.attached_stop_loss
+    strategy_tp = order_request.attached_take_profit
+    if strategy_sl is None or strategy_tp is None:
+        return True
+    midpoint = (strategy_sl + strategy_tp) / 2
+    if order_request.side == "BUY":
+        return llm_tp > midpoint
+    return llm_tp < midpoint
 
 
 def _coerce_decimal(value: Any) -> Decimal | None:

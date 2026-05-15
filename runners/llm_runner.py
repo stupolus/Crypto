@@ -309,6 +309,20 @@ async def _handle_closed_candle_with_llm(
         logger.warning("DRY-RUN: skipping place_order")
         return
 
+    # Диагностический dump перед place_order. Помогает понять что именно
+    # отправляем на BingX когда ответ — 101429 (position limit exceeded) или
+    # 101400 (SL wrong side). Видно qty/SL/TP/entry в одной строке.
+    logger.info(
+        "place_order request: symbol=%s side=%s type=%s qty=%s entry_mark=%s sl=%s tp=%s coid=%s",
+        approved.symbol,
+        approved.side,
+        approved.order_type,
+        approved.quantity,
+        candle.close,
+        approved.attached_stop_loss,
+        approved.attached_take_profit,
+        approved.client_order_id,
+    )
     try:
         ack = await private_api.place_order(approved, request_mark_price=candle.close)
         logger.info("order placed: %s status=%s", ack.order_id, ack.status)
@@ -321,8 +335,13 @@ async def _handle_closed_candle_with_llm(
         await alerter.send_critical(f"AuthError on {approved.symbol}: {exc}. Stopping runner.")
         raise
     except Exception as exc:
+        # Включаем диагностику в alert на случай если log не дойдёт.
         logger.exception("place_order failed")
-        await alerter.send_warning(f"place_order failed on {approved.symbol}: {exc}")
+        await alerter.send_warning(
+            f"place_order failed on {approved.symbol}: {exc} "
+            f"[qty={approved.quantity} sl={approved.attached_stop_loss} "
+            f"tp={approved.attached_take_profit} mark={candle.close}]"
+        )
         return
 
     # Layer 6 capture: записываем DecisionContext только если ордер реально размещён.
