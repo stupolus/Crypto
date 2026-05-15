@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- iOS Safari Add to Home Screen icon (180×180 native; SVG scales) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <rect width="180" height="180" fill="#0a0e14"/>
+  <path d="M90 24 L156 90 L90 156 L24 90 Z" fill="none" stroke="#d4af37" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M90 40 L140 90 L90 140 L40 90 Z" fill="#d4af37" opacity="0.15"/>
+  <line x1="90" y1="48" x2="90" y2="132" stroke="#00ff88" stroke-width="4"/>
+  <rect x="80" y="68" width="20" height="44" fill="#00ff88"/>
+</svg>
