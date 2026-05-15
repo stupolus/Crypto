@@ -2,11 +2,13 @@
 
 from core.signals.composite import (
     Blacklist,
+    CompositeNewsCalendar,
     FundingProvider,
     NewsCalendar,
     SetBlacklist,
     StaticFundingProvider,
     StaticNewsCalendar,
+    WeeklyEventCalendar,
 )
 from core.signals.extended_aggregator import (
     ExtendedSignalsResult,
@@ -45,6 +47,7 @@ from core.signals.session import (
 
 __all__ = [
     "Blacklist",
+    "CompositeNewsCalendar",
     "ExtendedSignalsResult",
     "FundingExtremeConfig",
     "FundingExtremeSignal",
@@ -58,6 +61,7 @@ __all__ = [
     "SetBlacklist",
     "StaticFundingProvider",
     "StaticNewsCalendar",
+    "WeeklyEventCalendar",
     "aggregate_extended_signals",
     "atr",
     "compute_imbalance",
