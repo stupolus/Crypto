@@ -38,6 +38,21 @@ class CoinglassFundingPoint(BaseModel):
     interval_hours: int = Field(default=8, ge=1, le=24)
 
 
+class CoinglassLiquidationBucket(BaseModel):
+    """Один таймбакет агрегированных ликвидаций (history endpoint).
+
+    ``/api/futures/liquidation/history`` отдаёт long/short объёмы
+    ликвидаций за интервал. Используется liquidation_reversal как
+    исторический LiquidationProvider (план 21 фаза 21.4).
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    timestamp_ms: int = Field(gt=0)
+    long_liquidation_usd: Decimal = Field(ge=0)
+    short_liquidation_usd: Decimal = Field(ge=0)
+
+
 class CoinglassLiquidationCluster(BaseModel):
     """Один кластер ликвидаций на heatmap.
 

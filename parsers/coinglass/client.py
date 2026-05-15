@@ -1,0 +1,212 @@
+"""Coinglass HTTP-клиент (план 21 фаза 21.4).
+
+Подтверждено пробой реального ключа + docs.coinglass.com 2026-05-15:
+- Base: ``https://open-api-v4.coinglass.com``
+- Auth header: ``CG-API-KEY``
+- Envelope: ``{"code":"0","msg":"success","data":[...]}``
+- Liquidation history: ``GET /api/futures/liquidation/history``
+  params: exchange, symbol, interval, limit≤1000, start_time, end_time (ms)
+
+⚠️ Без активного платного плана любой endpoint отдаёт
+``{"code":"401","msg":"Upgrade plan"}``. Клиент это ловит и возвращает
+пусто + WARNING (стратегия остаётся no-op, не падает). Как только план
+оплачен — работает без изменений кода.
+
+OI-history путь пока не подтверждён живым ключом (план не активен);
+вынесен в конфиг ``oi_history_path`` чтобы поправить одной строкой.
+"""
+
+from __future__ import annotations
+
+import logging
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+import httpx
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from parsers.coinglass.models import CoinglassLiquidationBucket
+
+logger = logging.getLogger(__name__)
+
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+_BASE_URL = "https://open-api-v4.coinglass.com"
+_LIQ_HISTORY_PATH = "/api/futures/liquidation/history"
+# Не подтверждён живым ключом (план не активен на 2026-05-15) — править
+# здесь когда план оплачен и реальный ответ проверен smoke-скриптом.
+_OI_HISTORY_PATH = "/api/futures/open-interest/aggregated-history"
+_TIMEOUT_S = 15.0
+
+
+class CoinglassSettings(BaseSettings):
+    """``COINGLASS_API_KEY`` из .env (gitignored). None → клиент noop."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="COINGLASS_",
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+        frozen=True,
+    )
+
+    api_key: str | None = Field(default=None)
+
+
+class CoinglassPlanError(Exception):
+    """Coinglass вернул 401 'Upgrade plan' — нужен платный тариф."""
+
+
+def _to_decimal(v: Any) -> Decimal:
+    try:
+        return Decimal(str(v))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0")
+
+
+class CoinglassClient:
+    """Тонкий httpx-клиент. Best-effort: сетевые/планные ошибки →
+    пустой результат + WARNING (не валит стратегию/runner).
+
+    ``client`` DI для тестов (respx). ``api_key`` override для тестов.
+    """
+
+    _UNSET = "__unset__"
+
+    def __init__(
+        self,
+        api_key: str | None = _UNSET,
+        *,
+        client: httpx.Client | None = None,
+        base_url: str = _BASE_URL,
+        oi_history_path: str = _OI_HISTORY_PATH,
+    ) -> None:
+        # api_key опущен → читаем .env; явный None/строка → как передан
+        # (None = тест unconfigured-пути).
+        if api_key == self._UNSET:
+            self._api_key = CoinglassSettings().api_key
+        else:
+            self._api_key = api_key
+        self._owns = client is None
+        self._client = client or httpx.Client(timeout=_TIMEOUT_S, base_url=base_url)
+        self._base_url = base_url
+        self._oi_path = oi_history_path
+
+    def close(self) -> None:
+        if self._owns:
+            self._client.close()
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._api_key)
+
+    def _get(self, path: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self._api_key:
+            logger.warning("CoinglassClient: no COINGLASS_API_KEY — returning empty")
+            return []
+        try:
+            resp = self._client.get(path, params=params, headers={"CG-API-KEY": self._api_key})
+            resp.raise_for_status()
+            body = resp.json()
+        except Exception as e:
+            logger.warning("Coinglass %s failed: %s", path, e)
+            return []
+        code = str(body.get("code", ""))
+        if code != "0":
+            msg = body.get("msg", "")
+            if "upgrade" in str(msg).lower() or code == "401":
+                logger.warning(
+                    "Coinglass %s: plan inactive (%s) — нужен платный тариф",
+                    path,
+                    msg,
+                )
+            else:
+                logger.warning("Coinglass %s code=%s msg=%s", path, code, msg)
+            return []
+        data = body.get("data")
+        return data if isinstance(data, list) else []
+
+    def get_liquidation_history(
+        self,
+        *,
+        exchange: str,
+        symbol: str,
+        interval: str,
+        limit: int = 1000,
+        start_time_ms: int | None = None,
+        end_time_ms: int | None = None,
+    ) -> list[CoinglassLiquidationBucket]:
+        """История long/short ликвидаций. Пусто если план не активен."""
+        params: dict[str, Any] = {
+            "exchange": exchange,
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(max(limit, 1), 1000),
+        }
+        if start_time_ms is not None:
+            params["start_time"] = start_time_ms
+        if end_time_ms is not None:
+            params["end_time"] = end_time_ms
+        out: list[CoinglassLiquidationBucket] = []
+        for row in self._get(_LIQ_HISTORY_PATH, params):
+            ts = row.get("time") or row.get("timestamp") or row.get("t")
+            if ts is None:
+                continue
+            out.append(
+                CoinglassLiquidationBucket(
+                    timestamp_ms=int(ts),
+                    long_liquidation_usd=_to_decimal(
+                        row.get("long_liquidation_usd")
+                        or row.get("longLiquidationUsd")
+                        or row.get("long")
+                        or 0
+                    ),
+                    short_liquidation_usd=_to_decimal(
+                        row.get("short_liquidation_usd")
+                        or row.get("shortLiquidationUsd")
+                        or row.get("short")
+                        or 0
+                    ),
+                )
+            )
+        return out
+
+    def get_open_interest_history(
+        self,
+        *,
+        symbol: str,
+        interval: str,
+        limit: int = 1000,
+        start_time_ms: int | None = None,
+        end_time_ms: int | None = None,
+    ) -> list[tuple[int, Decimal]]:
+        """История OI как [(ts_ms, oi_usd)]. Пусто если план не активен.
+
+        Парсинг толерантен к именам полей (close/openInterest/value) —
+        точная форма дозаверяется smoke-скриптом когда план оплачен.
+        """
+        params: dict[str, Any] = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(max(limit, 1), 1000),
+        }
+        if start_time_ms is not None:
+            params["start_time"] = start_time_ms
+        if end_time_ms is not None:
+            params["end_time"] = end_time_ms
+        out: list[tuple[int, Decimal]] = []
+        for row in self._get(self._oi_path, params):
+            ts = row.get("time") or row.get("timestamp") or row.get("t")
+            if ts is None:
+                continue
+            val = (
+                row.get("close")
+                or row.get("open_interest_usd")
+                or row.get("openInterest")
+                or row.get("value")
+                or 0
+            )
+            out.append((int(ts), _to_decimal(val)))
+        return out
