@@ -181,8 +181,7 @@ def _build_request_updates(order_request: OrderRequest, payload: dict[str, Any])
             updates["attached_stop_loss"] = sl_price
         else:
             logger.warning(
-                "llm_gate: ignoring LLM sl_price=%s — wrong side for %s order "
-                "(strategy_sl=%s)",
+                "llm_gate: ignoring LLM sl_price=%s — wrong side for %s order (strategy_sl=%s)",
                 sl_price,
                 order_request.side,
                 order_request.attached_stop_loss,
@@ -196,8 +195,7 @@ def _build_request_updates(order_request: OrderRequest, payload: dict[str, Any])
                 updates["attached_take_profit"] = tp
             else:
                 logger.warning(
-                    "llm_gate: ignoring LLM tp=%s — wrong side for %s order "
-                    "(strategy_tp=%s)",
+                    "llm_gate: ignoring LLM tp=%s — wrong side for %s order (strategy_tp=%s)",
                     tp,
                     order_request.side,
                     order_request.attached_take_profit,

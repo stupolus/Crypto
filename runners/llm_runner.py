@@ -313,8 +313,7 @@ async def _handle_closed_candle_with_llm(
     # отправляем на BingX когда ответ — 101429 (position limit exceeded) или
     # 101400 (SL wrong side). Видно qty/SL/TP/entry в одной строке.
     logger.info(
-        "place_order request: symbol=%s side=%s type=%s qty=%s entry_mark=%s "
-        "sl=%s tp=%s coid=%s",
+        "place_order request: symbol=%s side=%s type=%s qty=%s entry_mark=%s sl=%s tp=%s coid=%s",
         approved.symbol,
         approved.side,
         approved.order_type,
