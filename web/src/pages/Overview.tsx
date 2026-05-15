@@ -9,6 +9,7 @@ export default function Overview() {
   const { data: pollData, error } = usePolling(() => api.status(), 10000);
   const data = sseData ?? pollData;
   const { data: equity } = usePolling(() => api.equity(50), 30000);
+  const { data: strategyStats } = usePolling(() => api.strategyStats(), 30000);
 
   if (error) {
     return (
@@ -105,6 +106,60 @@ export default function Overview() {
           </div>
         )}
       </Section>
+
+      {/* Per-strategy stats */}
+      {strategyStats && strategyStats.strategies.length > 1 && (
+        <Section title="Strategy Leaderboard">
+          <table className="w-full text-sm">
+            <thead className="bg-bg-elevated border-b border-border text-xs font-mono text-text-muted uppercase">
+              <tr>
+                <th className="text-left px-4 py-2 font-normal">Strategy</th>
+                <th className="text-left px-4 py-2 font-normal hidden sm:table-cell">Symbol</th>
+                <th className="text-right px-4 py-2 font-normal">Trades</th>
+                <th className="text-right px-4 py-2 font-normal">Win Rate</th>
+                <th className="text-right px-4 py-2 font-normal hidden sm:table-cell">PF</th>
+                <th className="text-right px-4 py-2 font-normal">PnL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {strategyStats.strategies.map((s) => {
+                const pnl = parseFloat(s.total_pnl_usd);
+                const pnlColor =
+                  pnl > 0 ? "text-gain" : pnl < 0 ? "text-loss" : "text-text-muted";
+                const wrColor =
+                  s.win_rate_pct >= 50
+                    ? "text-gain"
+                    : s.win_rate_pct >= 35
+                      ? "text-gold"
+                      : "text-loss";
+                return (
+                  <tr
+                    key={s.strategy}
+                    className="border-b border-border last:border-0 hover:bg-bg-elevated transition"
+                  >
+                    <td className="px-4 py-2.5 font-mono">{s.strategy}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-text-muted hidden sm:table-cell">
+                      {s.symbol ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular">
+                      {s.closed}/{s.total}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right font-mono tabular ${wrColor}`}>
+                      {s.win_rate_pct.toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular hidden sm:table-cell">
+                      {s.profit_factor ?? "—"}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right font-mono tabular ${pnlColor}`}>
+                      {fmtNum(s.total_pnl_usd)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Section>
+      )}
 
       {/* Equity curve */}
       <Section title="Cumulative PnL Curve">
