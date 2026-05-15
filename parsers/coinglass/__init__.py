@@ -13,14 +13,22 @@ Coinglass даёт:
 Реальная имплементация с API ключом — после регистрации пользователя.
 """
 
+from parsers.coinglass.backfill import backfill_providers, map_symbol
+from parsers.coinglass.client import CoinglassClient, CoinglassSettings
 from parsers.coinglass.models import (
     CoinglassFundingPoint,
+    CoinglassLiquidationBucket,
     CoinglassLiquidationHeatmap,
     CoinglassOIPoint,
 )
 
 __all__ = [
+    "CoinglassClient",
     "CoinglassFundingPoint",
+    "CoinglassLiquidationBucket",
     "CoinglassLiquidationHeatmap",
     "CoinglassOIPoint",
+    "CoinglassSettings",
+    "backfill_providers",
+    "map_symbol",
 ]
