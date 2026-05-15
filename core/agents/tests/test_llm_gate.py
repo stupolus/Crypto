@@ -280,3 +280,107 @@ async def test_llm_gate_market_order_ignores_entry_price() -> None:
     assert result.approved_request is not None
     assert result.approved_request.price is None  # MARKET остаётся MARKET
     assert result.approved_request.attached_stop_loss == Decimal("80100")
+
+
+# ── SL/TP direction sanity (защита от BingX 101400) ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_llm_gate_ignores_wrong_side_sl_for_buy() -> None:
+    """BUY: strategy_sl=80000, LLM возвращает sl=79000 (НИЖЕ strategy_sl)
+    — это разрешено (wider stop, на правильной стороне entry).
+
+    А вот sl=85000 (выше entry для BUY) — игнорируем.
+    """
+    # Wider stop (LLM_sl < strategy_sl для BUY) → должен быть отвергнут
+    # потому что увеличивает риск. Текущая политика: разрешаем только
+    # tighter (LLM_sl >= strategy_sl).
+    team = _make_team_with_payload(
+        {
+            "action": "BUY",
+            "size_risk_pct": 1.0,
+            "sl_price": "85000",  # ВЫШЕ entry 80500 — wrong side
+            "tp_prices": ["82200"],
+            "composite_confidence": 0.75,
+        }
+    )
+    market, sentiment, macro = _make_contexts()
+    original = _make_request(side="BUY", sl=Decimal("80000"))
+    result = await llm_gate(
+        team=team,
+        order_request=original,
+        strategy_name="btc_breakout",
+        timestamp_ms=1_700_000_000_000,
+        indicators={},
+        confidence_raw=0.7,
+        state=_make_state(),
+        market_data=market,
+        sentiment_data=sentiment,
+        macro_data=macro,
+    )
+    assert result.approved_request is not None
+    # SL должен остаться strategy-defined (80000), не LLM-bad (85000)
+    assert result.approved_request.attached_stop_loss == Decimal("80000")
+
+
+@pytest.mark.asyncio
+async def test_llm_gate_ignores_wrong_side_sl_for_sell() -> None:
+    """SELL: strategy_sl=81000 (выше entry), LLM sl=79000 (НИЖЕ entry —
+    wrong side для SELL) → игнорируем."""
+    team = _make_team_with_payload(
+        {
+            "action": "SELL",
+            "size_risk_pct": 1.0,
+            "sl_price": "79000",  # НИЖЕ entry — wrong side для SELL
+            "tp_prices": ["78000"],
+            "composite_confidence": 0.75,
+        }
+    )
+    market, sentiment, macro = _make_contexts()
+    original = _make_request(
+        side="SELL", price=Decimal("80500"), sl=Decimal("81000"), tp=Decimal("78000")
+    )
+    result = await llm_gate(
+        team=team,
+        order_request=original,
+        strategy_name="btc_breakout",
+        timestamp_ms=1_700_000_000_000,
+        indicators={},
+        confidence_raw=0.7,
+        state=_make_state(),
+        market_data=market,
+        sentiment_data=sentiment,
+        macro_data=macro,
+    )
+    assert result.approved_request is not None
+    assert result.approved_request.attached_stop_loss == Decimal("81000")
+
+
+@pytest.mark.asyncio
+async def test_llm_gate_accepts_tighter_sl_for_buy() -> None:
+    """BUY: LLM tighter stop (sl=80100 > strategy_sl=80000) → принимается."""
+    team = _make_team_with_payload(
+        {
+            "action": "BUY",
+            "size_risk_pct": 1.0,
+            "sl_price": "80100",
+            "tp_prices": ["82200"],
+            "composite_confidence": 0.75,
+        }
+    )
+    market, sentiment, macro = _make_contexts()
+    original = _make_request(side="BUY", sl=Decimal("80000"))
+    result = await llm_gate(
+        team=team,
+        order_request=original,
+        strategy_name="btc_breakout",
+        timestamp_ms=1_700_000_000_000,
+        indicators={},
+        confidence_raw=0.7,
+        state=_make_state(),
+        market_data=market,
+        sentiment_data=sentiment,
+        macro_data=macro,
+    )
+    assert result.approved_request is not None
+    assert result.approved_request.attached_stop_loss == Decimal("80100")
