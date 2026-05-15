@@ -28,6 +28,7 @@ ExecStart=/opt/crypto/.venv/bin/python -m runners.llm_runner \
     --journal-db /var/lib/crypto/llm-%i.sqlite \
     --outcomes-db /var/lib/crypto/llm-%i-outcomes.sqlite \
     --heartbeat-file /var/lib/crypto/llm-%i.heartbeat \
+    --equity-snapshot-file /var/lib/crypto/llm-%i-equity.jsonl \
     --log-level INFO
 
 # Авто-рестарт при крэше (но НЕ при ручном stop)
