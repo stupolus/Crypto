@@ -21,7 +21,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-_STRATEGY_CHOICES = ["btc_breakout", "us_session_breakout", "trend_ema_4h"]
+_STRATEGY_CHOICES = [
+    "btc_breakout",
+    "us_session_breakout",
+    "trend_ema_4h",
+    "gold_safety_haven",
+    "oil_eia_avoid",
+    "stock_earnings_avoid",
+]
 
 
 @dataclass
