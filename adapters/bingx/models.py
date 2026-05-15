@@ -84,6 +84,23 @@ class Contract(_StrictModel):
         return v
 
 
+class OpenInterest(_StrictModel):
+    """``GET /openApi/swap/v2/quote/openInterest`` — текущий открытый интерес.
+
+    Тело BingX: ``{"code":0,"data":{"openInterest":"...","symbol":"...","time":...}}``.
+    Это snapshot (текущее значение), НЕ временной ряд — для истории нужен
+    Coinglass (см. бизнес/материалы/курсы/dmitry-shukin/что-проверить.md B1).
+    """
+
+    symbol: str
+    open_interest: DecimalField = Field(alias="openInterest")
+    time_ms: int = Field(alias="time")
+
+    @property
+    def time(self) -> datetime:
+        return _ms_to_utc(self.time_ms)
+
+
 class Ticker(_StrictModel):
     """``GET /openApi/swap/v2/quote/ticker`` — 24h-статистика по символу.
 

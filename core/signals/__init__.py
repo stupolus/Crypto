@@ -33,6 +33,12 @@ from core.signals.liquidation_sweep import (
     LiquidationSweepSignal,
     detect_liquidation_sweep,
 )
+from core.signals.open_interest import (
+    OIState,
+    OpenInterestConfig,
+    OpenInterestSignal,
+    detect_oi_trend,
+)
 from core.signals.order_flow import (
     OrderFlowConfig,
     OrderFlowSignal,
@@ -56,6 +62,9 @@ __all__ = [
     "LiquidationSweepConfig",
     "LiquidationSweepSignal",
     "NewsCalendar",
+    "OIState",
+    "OpenInterestConfig",
+    "OpenInterestSignal",
     "OrderFlowConfig",
     "OrderFlowSignal",
     "SetBlacklist",
@@ -67,6 +76,7 @@ __all__ = [
     "compute_imbalance",
     "detect_funding_extreme",
     "detect_liquidation_sweep",
+    "detect_oi_trend",
     "detect_order_flow",
     "donchian_channel",
     "ema",
