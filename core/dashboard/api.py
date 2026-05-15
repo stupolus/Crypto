@@ -33,6 +33,7 @@ def create_app(
     outcomes_db: Path | str | list[Path | str] = "/var/lib/crypto/llm-outcomes.sqlite",
     halt_flag_file: Path | str | None = "/var/lib/crypto/halt",
     heartbeat_file: Path | str | None = "/var/lib/crypto/llm-runner.heartbeat",
+    equity_snapshot_files: list[Path | str] | None = None,
     cors_origins: list[str] | None = None,
     news_aggregator: NewsAggregator | None = None,
     candles_fetcher: CandlesFetcher | None = None,
@@ -55,6 +56,7 @@ def create_app(
         outcomes_db=outcomes_db,
         halt_flag_file=halt_flag_file,
         heartbeat_file=heartbeat_file,
+        equity_snapshot_files=equity_snapshot_files,
     )
     news = news_aggregator or NewsAggregator()
     candles = candles_fetcher or CandlesFetcher()
@@ -162,6 +164,13 @@ def create_app(
         if limit < 1 or limit > 1000:
             raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
         return {"points": state.equity_curve(limit=limit)}
+
+    @app.get("/api/equity_snapshots")
+    def get_equity_snapshots(limit: int = 500) -> dict[str, Any]:
+        """Настоящая equity-curve из runner snapshot jsonl (реальный баланс)."""
+        if limit < 1 or limit > 5000:
+            raise HTTPException(status_code=400, detail="limit must be in [1, 5000]")
+        return {"points": state.equity_snapshots(limit=limit)}
 
     @app.get("/api/news")
     def get_news(limit: int = 30) -> dict[str, Any]:

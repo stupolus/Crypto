@@ -77,6 +77,7 @@ class DashboardState:
         outcomes_db: Path | str | list[Path | str],
         halt_flag_file: Path | str | None = None,
         heartbeat_file: Path | str | None = None,
+        equity_snapshot_files: list[Path | str] | None = None,
         runner_start_ts: float | None = None,
     ) -> None:
         # Accept либо одиночный путь, либо список путей. Список — для
@@ -92,6 +93,9 @@ class DashboardState:
         self._outcomes_db = self._outcomes_dbs[0]
         self._halt_flag_file = Path(halt_flag_file) if halt_flag_file else None
         self._heartbeat_file = Path(heartbeat_file) if heartbeat_file else None
+        # Equity snapshot jsonl (из runner._equity_snapshot_loop). Список
+        # путей — multi-runner. Каждая строка: {timestamp_ms, equity}.
+        self._equity_snapshot_files = [Path(p) for p in (equity_snapshot_files or [])]
         self._start_ts = runner_start_ts or time.time()
 
     # ── Health ──────────────────────────────────────────────────────────────
@@ -247,6 +251,40 @@ class DashboardState:
                 }
             )
         return points
+
+    def equity_snapshots(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """Реальная equity-curve из snapshot jsonl (runner пишет каждые 5 мин).
+
+        Vs equity_curve (реконструкция из closed-trade PnL) — здесь
+        настоящий баланс аккаунта, включая unrealized P&L и депозиты.
+
+        Multi-runner: сливаем все llm-*-equity.jsonl, сортируем по
+        timestamp ASC, отдаём последние ``limit`` точек. Битые строки
+        пропускаем (best-effort).
+        """
+        import json as _json
+
+        points: list[dict[str, Any]] = []
+        for fpath in self._equity_snapshot_files:
+            if not fpath.exists():
+                continue
+            try:
+                content = fpath.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for line in content.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = _json.loads(line)
+                    ts = int(rec["timestamp_ms"])
+                    eq = str(rec["equity"])
+                except (ValueError, KeyError, TypeError):
+                    continue
+                points.append({"timestamp_ms": ts, "equity": eq, "source": fpath.name})
+        points.sort(key=lambda p: p["timestamp_ms"])
+        return points[-limit:]
 
     def agent_confidence_history(self, agent_name: str, *, limit: int = 30) -> list[dict[str, Any]]:
         """История последних confidence/score значений одного агента.

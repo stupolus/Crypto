@@ -9,6 +9,7 @@ export default function Overview() {
   const { data: pollData, error } = usePolling(() => api.status(), 10000);
   const data = sseData ?? pollData;
   const { data: equity } = usePolling(() => api.equity(50), 30000);
+  const { data: equitySnap } = usePolling(() => api.equitySnapshots(300), 30000);
   const { data: strategyStats } = usePolling(() => api.strategyStats(), 30000);
 
   if (error) {
@@ -161,7 +162,17 @@ export default function Overview() {
         </Section>
       )}
 
-      {/* Equity curve */}
+      {/* Real equity curve (snapshot-based) — приоритет над PnL-реконструкцией */}
+      {equitySnap && equitySnap.points.length >= 2 && (
+        <Section title="Account Equity (live snapshots)">
+          <Sparkline
+            points={equitySnap.points.map((p) => parseFloat(p.equity))}
+            height={160}
+          />
+        </Section>
+      )}
+
+      {/* Cumulative PnL (реконструкция из closed trades) */}
       <Section title="Cumulative PnL Curve">
         {!equity || equity.points.length === 0 ? (
           <div className="px-4 py-8 text-center text-text-muted font-mono text-sm">

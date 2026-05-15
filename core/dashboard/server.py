@@ -8,6 +8,8 @@
                                   Поддерживает glob: /var/lib/crypto/llm-*-outcomes.sqlite
                                   → дашборд агрегирует outcomes из всех найденных файлов
                                   (multi-runner setup).
+    CRYPTO_EQUITY_SNAPSHOTS     — glob к equity jsonl (default /var/lib/crypto/llm-*-equity.jsonl).
+                                  Настоящая equity-curve из runner snapshot loop.
     CRYPTO_HALT_FLAG_FILE       — путь к halt-флагу (default /var/lib/crypto/halt)
     CRYPTO_HEARTBEAT_FILE       — путь к heartbeat (default /var/lib/crypto/llm-runner.heartbeat)
     CRYPTO_DASHBOARD_HOST       — bind host (default 127.0.0.1 — за nginx)
@@ -56,10 +58,17 @@ def main() -> None:
         logging.getLogger(__name__).info(
             "outcomes_db glob resolved → %d files: %s", len(outcomes_resolved), outcomes_resolved
         )
+    # CRYPTO_EQUITY_SNAPSHOTS поддерживает glob:
+    #   /var/lib/crypto/llm-*-equity.jsonl
+    equity_spec = os.getenv("CRYPTO_EQUITY_SNAPSHOTS", "/var/lib/crypto/llm-*-equity.jsonl")
+    equity_files = (
+        sorted(glob.glob(equity_spec)) if any(c in equity_spec for c in "*?[") else [equity_spec]
+    )
     app = create_app(
         outcomes_db=outcomes_resolved,
         halt_flag_file=os.getenv("CRYPTO_HALT_FLAG_FILE", "/var/lib/crypto/halt"),
         heartbeat_file=os.getenv("CRYPTO_HEARTBEAT_FILE", "/var/lib/crypto/llm-runner.heartbeat"),
+        equity_snapshot_files=list(equity_files),
         cors_origins=cors_origins,
     )
     host = os.getenv("CRYPTO_DASHBOARD_HOST", "127.0.0.1")
