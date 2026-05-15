@@ -132,6 +132,32 @@ async def test_get_ticker_parses_24h_stats(
     assert ticker.open_time.year >= 2025
 
 
+# ── open interest ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_open_interest_parses_snapshot(cfg: BingXConfig) -> None:
+    payload = {
+        "code": 0,
+        "msg": "",
+        "data": {
+            "openInterest": "123456.789",
+            "symbol": "BTC-USDT",
+            "time": 1_700_000_000_000,
+        },
+    }
+    async with BingXClient(cfg) as client, respx.mock(base_url=cfg.active_rest_base) as mock:
+        mock.get(cfg.rest_endpoints.open_interest).mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        public = PublicAPI(client, cfg)
+        oi = await public.get_open_interest("BTC-USDT")
+    assert oi.symbol == "BTC-USDT"
+    assert oi.open_interest == Decimal("123456.789")
+    assert oi.time_ms == 1_700_000_000_000
+    assert oi.time.year >= 2023
+
+
 # ── klines ──────────────────────────────────────────────────────────────────
 
 

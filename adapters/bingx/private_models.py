@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _ms_to_utc(value: int) -> datetime:
@@ -185,3 +185,286 @@ class Fill(_StrictModel):
     @property
     def time_utc(self) -> datetime:
         return _ms_to_utc(self.time_ms)
+
+
+# ─── Подтверждение ордера (POST/DELETE /trade/order) ────────────────────────
+
+
+class OrderAck(_StrictModel):
+    """Уплощённый ответ ``POST/DELETE /openApi/swap/v2/trade/order``.
+
+    Квирк live VST 2026-05-11: BingX отдаёт здесь короткий ack, отличный от
+    `Order`. Гарантированы только ``orderId``, ``symbol``, ``status``,
+    ``side``, ``positionSide``, ``type``. Остальное опционально и зависит от
+    типа ордера / стадии исполнения. ``orderId`` приходит как ``int``
+    (BingX snowflake-id), мы кастуем в ``str`` для единообразия с `Order`.
+
+    Квирк live VST §7 п.36: **attached SL/TP возвращаются прямо в ack** как
+    stringified JSON в полях ``stopLoss``/``takeProfit``. В ``/openOrders``
+    отдельных stop-ордеров **нет** (BingX держит attached SL/TP как атрибут
+    основного ордера, не как самостоятельный). Поэтому compensating-check
+    смотрит сюда.
+    """
+
+    order_id: str = Field(alias="orderId")
+    client_order_id: str | None = Field(default=None, alias="clientOrderID")
+    symbol: str
+    side: OrderSide
+    position_side: PositionSide = Field(alias="positionSide")
+    type: OrderType
+    status: OrderStatus
+    price: Decimal | None = None
+    stop_price: Decimal | None = Field(default=None, alias="stopPrice")
+    original_quantity: Decimal | None = Field(default=None, alias="origQty")
+    executed_quantity: Decimal | None = Field(default=None, alias="executedQty")
+    average_price: Decimal | None = Field(default=None, alias="avgPrice")
+    reduce_only: bool | None = Field(default=None, alias="reduceOnly")
+    time_ms: int | None = Field(default=None, alias="time")
+    update_time_ms: int | None = Field(default=None, alias="updateTime")
+    # Сырые stringified JSON-поля attached SL/TP. Пустая строка = не задан.
+    attached_stop_loss_raw: str | None = Field(default=None, alias="stopLoss")
+    attached_take_profit_raw: str | None = Field(default=None, alias="takeProfit")
+
+    @property
+    def has_attached_stop_loss(self) -> bool:
+        raw = (self.attached_stop_loss_raw or "").strip()
+        return bool(raw) and raw not in {"{}", "null"}
+
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _coerce_order_id_to_str(cls, v: object) -> str:
+        # BingX отдаёт `orderId` как int (snowflake); кастуем в str для
+        # единого контракта с `Order`.
+        return str(v)
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+
+# ─── User Data Stream события (фаза 0.D part 2) ──────────────────────────────
+
+
+class OrderUpdateEvent(_StrictModel):
+    """Событие ``ORDER_TRADE_UPDATE`` из User Data Stream.
+
+    BingX оборачивает данные ордера в ``o`` (object), top-level — ``e``/``E``/``T``.
+    Маппим вложенные поля через `model_validator` (pre): подтягиваем нужное
+    из ``o`` в top-level.
+    """
+
+    event_type: Literal["ORDER_TRADE_UPDATE"] = Field(alias="e")
+    event_time_ms: int = Field(alias="E")
+    symbol: str
+    order_id: str
+    client_order_id: str | None = None
+    side: OrderSide
+    type: OrderType
+    status: OrderStatus
+    position_side: PositionSide
+    price: Decimal
+    original_quantity: Decimal
+    executed_quantity: Decimal
+    average_price: Decimal | None = None
+    stop_price: Decimal | None = None
+    commission: Decimal | None = None
+    commission_asset: str | None = None
+    realised_profit: Decimal | None = None
+    reduce_only: bool | None = None
+    execution_type: Literal["NEW", "CANCELED", "CALCULATED", "EXPIRED", "TRADE", "AMENDMENT"]
+
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _coerce_oid(cls, v: object) -> str:
+        return str(v)
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+    @classmethod
+    def from_raw(cls, raw: dict[str, object]) -> OrderUpdateEvent:
+        """Распарсить top-level event с вложенным ``o``."""
+        if "o" not in raw or not isinstance(raw["o"], dict):
+            raise ValueError("ORDER_TRADE_UPDATE missing 'o' object")
+        order = raw["o"]
+        merged = {
+            "e": raw.get("e"),
+            "E": raw.get("E"),
+            "symbol": order.get("s"),
+            "order_id": order.get("i"),
+            "client_order_id": order.get("c") or None,
+            "side": order.get("S"),
+            "type": order.get("o"),
+            "status": order.get("X"),
+            "position_side": order.get("ps"),
+            "price": order.get("p"),
+            "original_quantity": order.get("q"),
+            "executed_quantity": order.get("z", "0"),
+            "average_price": order.get("ap"),
+            "stop_price": order.get("sp"),
+            "commission": order.get("n"),
+            "commission_asset": order.get("N"),
+            "realised_profit": order.get("rp"),
+            "reduce_only": order.get("R"),
+            "execution_type": order.get("x"),
+        }
+        return cls.model_validate(merged)
+
+
+class BalanceDelta(_StrictModel):
+    asset: str = Field(alias="a")
+    wallet_balance: Decimal = Field(alias="wb")
+    cross_wallet_balance: Decimal | None = Field(default=None, alias="cw")
+    balance_change: Decimal | None = Field(default=None, alias="bc")
+
+
+class PositionDelta(_StrictModel):
+    symbol: str = Field(alias="s")
+    position_amount: Decimal = Field(alias="pa")
+    entry_price: Decimal = Field(alias="ep")
+    accumulated_realised: Decimal | None = Field(default=None, alias="cr")
+    unrealized_pnl: Decimal = Field(alias="up")
+    margin_type: MarginType | None = Field(default=None, alias="mt")
+    isolated_wallet: Decimal | None = Field(default=None, alias="iw")
+    position_side: PositionSide = Field(alias="ps")
+
+
+class AccountUpdateEvent(_StrictModel):
+    """Событие ``ACCOUNT_UPDATE``: баланс + позиции."""
+
+    event_type: Literal["ACCOUNT_UPDATE"] = Field(alias="e")
+    event_time_ms: int = Field(alias="E")
+    balances: list[BalanceDelta] = Field(default_factory=list)
+    positions: list[PositionDelta] = Field(default_factory=list)
+
+    @classmethod
+    def from_raw(cls, raw: dict[str, object]) -> AccountUpdateEvent:
+        a = raw.get("a")
+        if not isinstance(a, dict):
+            raise ValueError("ACCOUNT_UPDATE missing 'a' object")
+        return cls.model_validate(
+            {
+                "e": raw.get("e"),
+                "E": raw.get("E"),
+                "balances": a.get("B", []),
+                "positions": a.get("P", []),
+            }
+        )
+
+
+class UserStreamReconcileEvent(_StrictModel):
+    """Синтетическое событие, эмитируется адаптером после reconnect.
+
+    Содержит «снимок» состояния через REST — стратегия должна расценивать
+    как «вот что сейчас правда», а не как «свежее событие». Полезно для
+    идемпотентного синка после WS-разрыва (см. plans/07 §3.2).
+    """
+
+    event_type: Literal["RECONCILE"] = "RECONCILE"
+    event_time_ms: int
+    balances: list[Balance] = Field(default_factory=list)
+    positions: list[Position] = Field(default_factory=list)
+    open_orders: list[Order] = Field(default_factory=list)
+
+
+UserStreamEvent = OrderUpdateEvent | AccountUpdateEvent | UserStreamReconcileEvent
+
+
+def parse_user_stream_event(raw: dict[str, object]) -> UserStreamEvent | None:
+    """Распарсить сырое сообщение из user-data WS.
+
+    Возвращает ``None`` для неподдерживаемых типов событий (адаптер пропускает,
+    стратегия не должна получать их в стриме).
+    """
+    event_type = raw.get("e")
+    if event_type == "ORDER_TRADE_UPDATE":
+        return OrderUpdateEvent.from_raw(raw)
+    if event_type == "ACCOUNT_UPDATE":
+        return AccountUpdateEvent.from_raw(raw)
+    return None
+
+
+# ─── Запрос на размещение ордера (наша доменная модель) ──────────────────────
+
+
+TimeInForce = Literal["GTC", "IOC", "FOK"]
+EntryOrderType = Literal["MARKET", "LIMIT"]
+
+
+class OrderRequest(_StrictModel):
+    """Запрос на размещение ордера: наша модель, не от BingX.
+
+    Инвариант проекта (см. plans/01 §3 «Защитные инварианты»): нельзя
+    открывать позицию без attached stop_loss. Адаптер запрещает это на
+    уровне валидатора, до отправки запроса.
+
+    Для close-side (``reduce_only=True``) attached SL/TP запрещены: позиция
+    уже существует, защитные ордера ставятся на entry или отдельным вызовом
+    в фазе 0.D part 2.
+    """
+
+    symbol: str
+    side: OrderSide
+    position_side: PositionSide = "BOTH"
+    order_type: EntryOrderType
+    quantity: Decimal
+    price: Decimal | None = None
+    reduce_only: bool = False
+    time_in_force: TimeInForce = "GTC"
+    attached_stop_loss: Decimal | None = None
+    attached_take_profit: Decimal | None = None
+    client_order_id: str | None = None
+    working_type: Literal["MARK_PRICE", "CONTRACT_PRICE", "INDEX_PRICE"] = "MARK_PRICE"
+
+    @field_validator("symbol")
+    @classmethod
+    def _check_hyphen_req(cls, v: str) -> str:
+        if "-" not in v:
+            raise ValueError(f"BingX symbol must contain hyphen, got {v!r}")
+        return v
+
+    @field_validator("quantity")
+    @classmethod
+    def _check_positive_quantity(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError(f"quantity must be > 0, got {v}")
+        return v
+
+    @field_validator("client_order_id")
+    @classmethod
+    def _check_client_order_id_length(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not (1 <= len(v) <= 40):
+            raise ValueError(f"client_order_id length must be 1..40 chars, got {len(v)}")
+        return v
+
+    @model_validator(mode="after")
+    def _check_invariants(self) -> OrderRequest:
+        if self.order_type == "LIMIT" and self.price is None:
+            raise ValueError("LIMIT order requires price")
+        if self.order_type == "MARKET" and self.price is not None:
+            raise ValueError("MARKET order must not have price")
+        if self.reduce_only:
+            if self.attached_stop_loss is not None:
+                raise ValueError("reduce_only order must not carry attached stop_loss")
+            if self.attached_take_profit is not None:
+                raise ValueError("reduce_only order must not carry attached take_profit")
+        else:
+            if self.attached_stop_loss is None:
+                raise ValueError(
+                    "entry order must have attached_stop_loss "
+                    "(see бизнес/риск-профиль.md: «нет стопа на бирже — нет позиции»)"
+                )
+        for fname in ("price", "attached_stop_loss", "attached_take_profit"):
+            val = getattr(self, fname)
+            if val is not None and val <= 0:
+                raise ValueError(f"{fname} must be > 0, got {val}")
+        return self

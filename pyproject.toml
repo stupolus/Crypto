@@ -23,13 +23,18 @@ dev = [
     "mypy>=1.14,<2",
     "types-pyyaml>=6.0,<7",
 ]
+# Web dashboard (отдельный optional чтобы не утяжелять trading runtime)
+dashboard = [
+    "fastapi>=0.115,<0.117",
+    "uvicorn[standard]>=0.32,<0.36",
+]
 
 [build-system]
 requires = ["setuptools>=70"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["adapters*"]
+include = ["adapters*", "core*", "strategies*"]
 exclude = ["venv*", "tests*"]
 
 # ─── Ruff ────────────────────────────────────────────────────────────────────
@@ -79,7 +84,22 @@ ignore_missing_imports = true
 # ─── pytest ──────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["adapters/bingx/tests"]
+testpaths = [
+    "adapters/bingx/tests",
+    "core/agents/tests",
+    "core/alerts/tests",
+    "core/backtest/tests",
+    "core/risk/tests",
+    "core/signals/tests",
+    "parsers/coinglass/tests",
+    "parsers/macro/tests",
+    "parsers/twitter/tests",
+    "runners/tests",
+    "scripts/tests",
+    "strategies/btc_breakout/tests",
+    "strategies/trend_ema_4h/tests",
+    "strategies/us_session_breakout/tests",
+]
 markers = [
     "integration: hits real BingX endpoints, run manually with `pytest -m integration`",
 ]
@@ -91,8 +111,26 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
-source = ["adapters/bingx"]
-omit = ["adapters/bingx/tests/*"]
+source = [
+    "adapters/bingx",
+    "core/risk",
+    "core/backtest",
+    "core/signals",
+    "core/alerts",
+    "strategies/btc_breakout",
+    "strategies/us_session_breakout",
+    "strategies/trend_ema_4h",
+]
+omit = [
+    "adapters/bingx/tests/*",
+    "core/risk/tests/*",
+    "core/backtest/tests/*",
+    "core/signals/tests/*",
+    "core/alerts/tests/*",
+    "strategies/btc_breakout/tests/*",
+    "strategies/us_session_breakout/tests/*",
+    "strategies/trend_ema_4h/tests/*",
+]
 
 [tool.coverage.report]
 fail_under = 70

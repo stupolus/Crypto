@@ -1,0 +1,51 @@
+[Unit]
+Description=Crypto bot — %i runner (BingX VST/live)
+After=network-online.target
+Wants=network-online.target
+StartLimitInterval=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=/etc/crypto/.env
+ExecStart=/opt/crypto/.venv/bin/python -m runners.live_runner \
+    --strategy btc_breakout \
+    --symbol %i \
+    --interval 15m \
+    --warmup-candles 100 \
+    --metrics-file /var/lib/crypto/%i-metrics.jsonl \
+    --journal-db /var/lib/crypto/%i.sqlite \
+    --log-level INFO
+
+# Авто-рестарт при крэше (но НЕ при ручном stop)
+Restart=on-failure
+RestartSec=10s
+
+# Лимит: 5 рестартов за 5 минут. Если падает чаще — systemd прекращает,
+# unit переходит в 'failed', healthz отдаёт 503 → UptimeRobot шлёт алерт.
+
+# Логи в journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-%i
+
+# Безопасность: read-only / минимум прав
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/crypto
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

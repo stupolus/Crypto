@@ -1,0 +1,35 @@
+# Параметры BTC breakout стратегии.
+# Все числа обоснованы в plans/08-стратегия-btc-breakout.md §5.
+# При изменении: сначала правим план (там обоснования), потом сюда.
+
+symbol: BTC-USDT
+timeframe: 15m
+
+# Donchian channel
+donchian_n: 20         # 5 часов на 15m = «свежее движение дня»
+
+# ATR (Wilder)
+atr_window: 14         # стандарт Wilder
+atr_percentile_min: 0.5      # минимум 50-й percentile — верхняя половина
+atr_percentile_lookback: 200 # ~50 часов на 15m
+
+# Volume
+volume_sma_window: 20  # совпадает с donchian для простоты
+volume_multiplier: 1.5 # классика breakout-confirmation
+
+# Composite filters
+funding_rate_max_pct: 0.05   # 0.05% за 8ч — превышение блокирует
+
+# Stop-loss
+stop_min_pct: 0.5      # минимум 0.5% от entry (риск-профиль)
+
+# Take-profit (TP1)
+tp1_r_multiple: 1.5    # entry + 1.5 × stop_distance
+# TP1 fraction отложено — на MVP закрываем 100% по TP1.
+# В live будет 50% на TP1 + 50% trailing.
+
+# Trailing exit (после TP1 — для будущей реализации)
+tp2_trailing_ema: 21   # EMA21 на 15m
+
+# Risk
+risk_tier: B           # B-tier по умолчанию (1.0% риск)

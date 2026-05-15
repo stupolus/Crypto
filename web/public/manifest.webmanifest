@@ -1,0 +1,32 @@
+{
+  "name": "Crypto Wall Street Terminal",
+  "short_name": "Crypto",
+  "description": "Real-time crypto/RWA/stock perp trading dashboard with LLM agents",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e14",
+  "theme_color": "#0a0e14",
+  "orientation": "any",
+  "lang": "ru",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+# Caddy reverse proxy + static frontend.
+#
+# По умолчанию слушает :80 на IP (без домена). Когда у тебя появится
+# домен (например crypto.example.com), замени :80 на сам домен — Caddy
+# автоматически возьмёт Let's Encrypt сертификат и включит HTTPS.
+#
+# Установка Caddy на Ubuntu:
+#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+#   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+#     | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
+#     | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+#   sudo apt update && sudo apt install -y caddy
+#
+# После установки:
+#   sudo cp /opt/crypto/scripts/deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#   sudo ufw allow 80/tcp
+#   # (если есть домен) sudo ufw allow 443/tcp
+
+:80 {
+    # Статический frontend — Vite production build
+    root * /opt/crypto/web/dist
+    file_server
+
+    # JSON API → FastAPI uvicorn
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8081
+    }
+
+    # SPA fallback — все non-existing paths отдают index.html для React Router
+    try_files {path} /index.html
+
+    # Сжатие
+    encode gzip zstd
+
+    # Безопасность
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        # MIME type sniffing protection
+        X-Content-Type-Options "nosniff"
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Cache static assets
+        Cache-Control "public, max-age=3600" {path}.{css,js,svg,png,jpg,woff,woff2}
+        # Don't cache HTML
+        Cache-Control "no-cache" {path}.html
+        # Hide Caddy version
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10MiB
+            roll_keep 5
+        }
+        format console
+    }
+}
+
+# Когда подключишь домен (раскомментируй и замени):
+#
+# crypto.example.com {
+#     root * /opt/crypto/web/dist
+#     file_server
+#     handle /api/* {
+#         reverse_proxy 127.0.0.1:8081
+#     }
+#     try_files {path} /index.html
+#     encode gzip zstd
+#     # Caddy автоматически возьмёт TLS из Let's Encrypt
+# }

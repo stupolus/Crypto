@@ -333,6 +333,13 @@ class ExchangeAdapter(Protocol):
 | 29 | **Klines возвращаются DESC** (newest first), а не ASC. Не указано явно в docs-v3, но подтверждено integration-тестом 2026-05-10. | подтверждено на live | `PublicAPI.get_klines` локально сортирует по `open_time_ms` ASC — стратегии/бэктест получают удобный time-series порядок без сюрпризов. |
 | 30 | **`recvWindow` в подписанных запросах приводит к `code=100001 "Signature verification failed"`** даже когда значение совпадает с дефолтом docs (5000ms). Подтверждено на live VST 2026-05-11 для `GET /user/balance`, `POST /trade/marginType`, `POST /trade/leverage`. Противоречит п.18 (docs) и п.19 (где `recvWindow` упоминается как стандартный параметр). Без `recvWindow` в payload — BingX применяет server-side default и принимает подпись. | подтверждено на live VST (расходится с docs) | `BingXClient._do_signed` не отправляет `recvWindow`. Поле `signing.recv_window_ms` в `config.yaml` оставлено как декларация (на случай если BingX вернёт документированное поведение либо для будущих ордеров). Unit-тест `test_signed_request_includes_signature_apikey_and_recv_window` явно проверяет, что `recvWindow` отсутствует в URL. |
 | 31 | **BingX подписывает query string в том порядке, в котором она пришла в URL — не пересортирует.** Подтверждено на live VST 2026-05-11: одни и те же ASCII-сортированные параметры с `httpx params={"symbol":..., "marginType":..., "timestamp":...}` (insertion-order) дают `code=100001`, а те же параметры в alpha-sorted порядке (`{"marginType":..., "symbol":..., "timestamp":...}`) принимаются. Противоречит п.18 docs, где явно сказано «параметры сортируются по ASCII при формировании подписи» — без оговорки, что отправлять их в URL нужно в том же порядке. | подтверждено на live VST (расходится с docs) | `BingXClient._do_signed`: перед отправкой params пересоздаются как `dict(sorted(...))` — Python dict сохраняет insertion order, httpx ретранслирует его в URL. `signature` добавляется последним. Unit-тест `test_signed_request_emits_params_in_alpha_sorted_order` фиксирует ожидаемый порядок. |
+| 32 | **`stopPrice` внутри stringified JSON `stopLoss`/`takeProfit` обязан быть JSON-числом, не строкой.** Подтверждено на live VST 2026-05-11 на `POST /trade/order`: передача `{"type":"STOP_MARKET","stopPrice":"80499.4","workingType":"MARK_PRICE"}` (строка) даёт `code=109400 "Mismatch type float64 with value string"`. С числом (`80499.4`) принимается. Docs-v3 (п.7) пишут пример без кавычек, но это легко прочитать как «JSON в строке, значения как угодно». | подтверждено на live VST (расходится с интерпретацией docs) | `_attached_protective` в `adapters/bingx/private.py`: `stopPrice` сериализуется как `float(decimal)`. Округление под precision символа — задача стратегии (адаптер не «угадывает»). |
+| 33 | **В one-way режиме `positionSide` обязан быть `"BOTH"`.** Подтверждено на live VST 2026-05-11 на `POST /trade/order`: попытка передать `positionSide="LONG"` (взятый из `GET /user/positions` ответа, который для one-way иногда отдаёт `LONG`/`SHORT` вместо `BOTH`) даёт `code=109400 "In the One-way mode, the 'PositionSide' field can only be set to BOTH"`. Расхождение: BingX READ-методы могут отдавать `LONG`/`SHORT` для one-way позиций, но WRITE-методы такие значения отвергают. | подтверждено на live VST (расходится: read vs write) | `PrivateAPI.close_position` принудительно ставит `position_side="BOTH"` при формировании close-ордера, игнорируя значение из `Position.position_side`. На стратегиях это инвариант one-way режима из бизнес/риск-профиль.md. |
+| 34 | **`POST /openApi/user/auth/userDataStream` возвращает СЫРОЙ `{"listenKey": "..."}` без envelope `{code, msg, data}`.** Все остальные эндпоинты BingX обёрнуты в стандартный конверт; этот — нет. Подтверждено на live VST 2026-05-11. | подтверждено на live VST (расходится с остальным API) | `BingXClient.request_signed(..., raw_response=True)` отключает разворачивание envelope. `PrivateAPI.create_listen_key` использует флаг. |
+| 35 | **`PUT/DELETE /openApi/user/auth/userDataStream` возвращают пустой body** (не JSON, даже не `{}`). Подтверждено на live VST 2026-05-11. | подтверждено на live VST | `BingXClient._parse_raw_json` толерантен к пустому body — возвращает `{}` чтобы не падать с «non-JSON response». |
+| 36 | **Attached SL/TP возвращаются в `ack` `place_order` (поле `data.order.stopLoss`), но НЕ как самостоятельные ордера в `/openOrders`.** BingX держит attached SL/TP как **атрибут основного ордера**, а не отдельные ордерные сущности. Сразу после `place_order(MARKET)` со status=`FILLED` и непустым `stopLoss` в ack — `/openOrders` отдаёт пустой массив. Стопы срабатывают, но «увидеть» их через polling нельзя. Подтверждено на live VST 2026-05-11. | подтверждено на live VST | `PrivateAPI.place_order` для compensating-check смотрит в `ack.has_attached_stop_loss` (поле `stopLoss` ack ордера). Если пусто — SL не сохранён → `close_position` + `OrderRejected`. Не делаем polling `/openOrders`. |
+| 37 | **`POST /openApi/swap/v2/trade/cancelAllAfter` возвращает HTTP 404 на VST** («404 page not found»). На live эндпоинт должен быть, на demo — отсутствует. Подтверждено 2026-05-11. | подтверждено на live VST (расходится: live vs demo) | `PrivateAPI.cancel_all_after` реализован по docs; integration-тест на VST пропускается со skip-сообщением. Реальную проверку отложили на фазу 1 (live). |
+| 38 | **WS kline message формат БЕЗ полей `x` (is_closed) и `t` (open_time).** Только `o`, `h`, `l`, `c`, `v`, `T` (close_time). Подтверждено на live BingX 2026-05-12 прямым WS sniffing. Каждое сообщение — обновление текущей свечи в реальном времени (~200ms). Close detection возможна **только через смену `T`** — когда приходит новое сообщение с другим `T`, предыдущая свеча закрылась. Противоречит общепринятому формату Binance-style kline streams (где есть `x: bool`). | подтверждено на live (расходится с Binance-style) | `runners.live_runner._candle_loop` буферизует last snapshot и при смене `T` эмитит её как closed candle. `open_time` восстанавливается как `last_T - interval_ms`. Изначальная реализация в фазе 0.D part 2 опиралась на поле `x` — это был баг, runner молча игнорировал все close events. Пофикшено 2026-05-12. |
 
 ---
 
@@ -461,6 +468,33 @@ class ExchangeAdapter(Protocol):
 - ✅ Найдено и зафиксировано **3 новых квирка live BingX** (§7 п.27–29) расходящихся с docs-v3: WS-формат интервала = REST-форма; `maxLongLeverage` отсутствует в live `/contracts`; klines возвращаются DESC.
 - **Артефакт:** `await PublicAPI(client, cfg).get_klines("BTC-USDT", "15m", limit=...)` отдаёт типизированный `list[Kline]` ASC по времени, `BingXMarketWebSocket.subscribe("BTC-USDT@kline_1m")` отдаёт async-iterator data-фреймов с авто-реконнектом.
 
+### Фаза 0.E — Hardening (закрыта 2026-05-11)
+- ✅ `OrderJournal` (SQLite, stdlib): `pending → acked → filled/canceled/failed`. Идемпотентность через `client_order_id` PK. Async API через `asyncio.to_thread`. Восстановление кэша через `list_pending(symbol)` при старте процесса.
+- ✅ `UserStreamReconcileEvent` + reconcile в `BingXUserDataStream`: на каждом успешном (ре)коннекте — snapshot `balance + positions + open_orders` через REST, пушится **первым** событием в queue. Стратегия инициализирует/синкает state.
+- ✅ `MetricsWriter` (JSON-lines) + `compute_slippage_bps`: на каждый `place_order` адаптер пишет `latency_ms`, `slippage_bps`, статус ack в `ops/metrics.jsonl`. Baseline копится эмпирически.
+- ✅ Маскирование `signature` и `X-BX-APIKEY`: `mask_signed_url` / `mask_headers` в `client.py`. Готово к подключению при добавлении логов запросов.
+- ✅ Security review checklist пройден (см. retro/2026-05-11-фаза-0E.md): ключи только в `.env`, `.env` gitignored, IP whitelist у пользователя, `BINGX_ENV=vst` гейт.
+- ✅ 11 новых unit-тестов (journal CRUD + metrics serialization/slippage + masking). Общее покрытие сохранено ≥70%.
+- ✅ Integration на VST: reconcile-event приходит первым в стриме; journal-запись `pending → acked` подтверждена.
+
+### Фаза 0.D part 2 — User-data stream + dead-man + compensating-close (закрыта 2026-05-11)
+- ✅ `PrivateAPI.create_listen_key` / `keep_alive_listen_key` / `close_listen_key` — listenKey CRUD (raw response, толерантность к пустому body).
+- ✅ `PrivateAPI.cancel_all_after(timeout_ms)` — реализован; на VST возвращает 404 (см. §7 п.37), integration пропускается с понятным skip-сообщением.
+- ✅ `BingXUserDataStream` — WS-стрим на `swap-market?listenKey=...`, парсит `ORDER_TRADE_UPDATE`/`ACCOUNT_UPDATE` в типизированные модели. Фоновый keep-alive task продлевает listenKey каждые 30 мин. Авто-реконнект с экспоненциальным backoff.
+- ✅ `OrderUpdateEvent`, `AccountUpdateEvent`, `BalanceDelta`, `PositionDelta` — все на `Decimal`, с `from_raw` для парсинга вложенных `o`/`a` объектов BingX-формата.
+- ✅ Compensating-close в `place_order`: при `attached_stop_loss` адаптер проверяет, что `ack.stopLoss` непуст. Если пусто — `close_position` + `OrderRejected`. Используем сам ack, не `/openOrders` (см. §7 п.36).
+- ✅ 11 новых unit-тестов (listenKey CRUD, cancel_all_after, compensating, user-stream event-parsing). Покрытие сохранено ≥70%.
+- ✅ Integration на VST: `test_int_listen_key_lifecycle` + `test_int_user_stream_receives_order_trade_update_on_close` зелёные. `cancelAllAfter` пропущен (404 на VST).
+- ✅ Найдено **4 новых квирка** live VST (§7 п.34–37): userDataStream без envelope; PUT/DELETE с пустым body; attached SL в ack, не в openOrders; cancelAllAfter 404 на VST.
+
+### Фаза 0.D part 1 — Ордера и kill switch (закрыта 2026-05-11)
+- ✅ `OrderRequest` (наша доменная модель) + `OrderAck` (короткий ответ POST/DELETE `/trade/order`). Жёсткие валидаторы: «entry без attached_stop_loss» / «reduce_only с attached_*» / «LIMIT без price» / «MARKET с price» / «quantity ≤ 0» — все запрещены.
+- ✅ `PrivateAPI.place_order` — атомарный entry+SL/TP. `stopLoss`/`takeProfit` — stringified JSON с `workingType: MARK_PRICE`.
+- ✅ `PrivateAPI.cancel_order` (по `order_id` или `client_order_id`), `cancel_all` (idempotent: «nothing to cancel» → пустой список), `close_position` (kill switch: cancel_all → market reduce_only в обратную сторону; идемпотентен на flat-аккаунте).
+- ✅ 11 новых unit-тестов (валидация OrderRequest + stopLoss JSON + cancel + close on flat/long). Общее покрытие **83.84%** (target ≥70%).
+- ✅ Integration на VST: полный цикл `open market+SL → assert position → close → assert flat` — зелёный.
+- ✅ Найдено **2 новых квирка** live VST (см. §7 п.32–33): `stopPrice` обязан быть JSON-числом не строкой; `positionSide` в one-way write-методах — только `"BOTH"` (read-методы могут отдавать `LONG`/`SHORT`).
+
 ### Фаза 0.C — Аутентификация и приватный read (закрыта 2026-05-11)
 - ✅ `BingXSettings` (pydantic-settings, env_prefix=`BINGX_`) — чтение ключей из `.env`. `active_key`/`active_secret` по полю `env`. `BINGX_ENV=vst` имеет приоритет над YAML.
 - ✅ `ServerTimeSyncer` — `offset = server - local`, ленивый pull, resync не чаще `signing.server_time_resync_interval_s` (5 мин). Авто-resync + 1 ретрай при `code=109400`/timestamp errors.
@@ -498,16 +532,20 @@ class ExchangeAdapter(Protocol):
 
 ## 13. Что СЕЙЧАС, в ближайшую сессию
 
-Фазы 0.A, 0.B, 0.C закрыты. **Следующая сессия — фаза 0.D (ордера и kill switch).**
+Фазы 0.A, 0.B, 0.C, 0.D part 1, 0.D part 2, **0.E** закрыты. **BingX-адаптер технически готов к стратегии.**
 
-Конкретные задачи следующей сессии (из §11, фаза 0.D):
-1. Реализовать `place_order` (market, limit, stop_market, stop_limit, tp_market). Атомарность entry+SL через attached SL/TP в одном запросе (см. §4.1 и квирк §7 п.6). Никогда не отправляем entry без attached stop — это инвариант риск-движка.
-2. Реализовать `cancel_order`, `cancel_all`, `close_position`.
-3. Подключить `Cancel All After` (`POST /openApi/swap/v2/trade/cancelAllAfter`, см. §7 п.24) как биржевой dead-man timer — страховка от сетевых разрывов.
-4. Реализовать `stream_user_events` — User Data Stream (`listenKey` + `wss://...?listenKey=...`, см. §7 п.15–17). Reconcile состояния после reconnect.
-5. ⚠️ **Перепроверить квирки 0.C на write-методах:** `recvWindow` в подписи (п.30) и порядок параметров (п.31) уже зафиксированы для read/setters. Для write — те же фиксы должны работать (логика подписи общая), но smoke на каждом методе обязателен.
-6. Полный integration-сценарий на VST: открыть позицию с attached SL → отменить → закрыть → проверить fills.
-7. Unit + integration.
+**Следующая сессия — план первой стратегии (BTC breakout):**
+1. Создать `plans/08-стратегия-btc-breakout.md` — Donchian breakout 15m + ATR + volume + composite state. Spec в `plans/00` §«Стратегия №1».
+2. `core/risk/` — RiskEngine (формула размера позиции от 1% эквити, circuit breakers, лимиты).
+3. `core/signals/` — composite state engine (входной фильтр для стратегии).
+4. `strategies/btc_breakout/` — стратегия как класс, потребляющая `BingXUserDataStream` + `RiskEngine`.
+5. `core/backtest/` — backtester на исторических kline (BingX REST или загруженный parquet).
+6. План на 4 недели demo (VST) → ретроспектива → решение по live.
+
+**Параллельно, как только понадобится:**
+- Telegram-алерты (`OrderRejected`, `AuthError`, kill switch, user-stream disconnect > N сек) — отдельный план, в нём бот, токен, формат сообщений.
+- Standalone stop_market / stop_limit / tp_market (если стратегия захочет менять SL после flip).
+- Парсеры TG-скринеров / Hyperliquid (для фильтров стратегии, не триггеров — см. CLAUDE.md принцип №1).
 
 **Параллельно** (другая сессия / другой контекст) можно начать `plans/05-риск-движок.md` — он не зависит от BingX-API детально, только от интерфейса адаптера, который зафиксирован в §3 этого документа.
 
@@ -535,6 +573,41 @@ class ExchangeAdapter(Protocol):
 - `adapters/bingx/tests/`: 39 unit-тестов с respx + 4 integration-теста против live BingX. Покрытие 83.02%.
 - §7 пополнен 3 новыми квирками (п.27–29) на основе живых данных, расходящихся с docs.
 - §13 переключён на фазу 0.C (приватные read на VST). §11 фаза 0.B помечена закрытой.
+
+Сессия 2026-05-11 (фаза 0.E — hardening: persistence + reconcile + metrics + security):
+- `plans/07-фаза-0E.md` — план фазы.
+- `adapters/bingx/journal.py` — `OrderJournal` (SQLite, stdlib). Pending → acked / failed / filled. `client_order_id` PK. Async API через `asyncio.to_thread`.
+- `adapters/bingx/metrics.py` — `MetricsWriter` (JSON-lines) + `OrderMetric` + `compute_slippage_bps`. Latency (ack — start), slippage (avg vs mark price на момент отправки).
+- `adapters/bingx/private_models.py` + `UserStreamReconcileEvent`.
+- `adapters/bingx/user_stream.py` — после `_run_session` connect эмитит RECONCILE-event первым.
+- `adapters/bingx/client.py` — `mask_signed_url` / `mask_headers` helpers + `_SENSITIVE_QUERY_PARAMS`/`_SENSITIVE_HEADERS_CI` константы.
+- `adapters/bingx/private.py` — `PrivateAPI(client, journal=, metrics=)` опциональные. `place_order(req, request_mark_price=)` журналирует `pending → acked / failed`, считает latency + slippage.
+- 11 новых unit (journal CRUD + metrics + masking). Общее покрытие сохранено ≥70%.
+- Integration на VST: reconcile-event первым в стриме, journal `pending → acked` подтверждён.
+- §11 фаза 0.E помечена закрытой. §13 переключён на план первой стратегии (BTC breakout).
+
+Сессия 2026-05-11 (фаза 0.D part 2 — user-data stream + dead-man + compensating-close на VST):
+- `plans/06-фаза-0D-part2.md` — план фазы.
+- `adapters/bingx/user_stream.py` — `BingXUserDataStream` (WS + keep-alive task + reconnect + parse events).
+- `adapters/bingx/private_models.py` (+ `OrderUpdateEvent`, `AccountUpdateEvent`, `BalanceDelta`, `PositionDelta`, `parse_user_stream_event`, `OrderAck` расширен полями `attached_stop_loss_raw`/`attached_take_profit_raw` + property `has_attached_stop_loss`).
+- `adapters/bingx/private.py`: `create_listen_key`/`keep_alive_listen_key`/`close_listen_key` (`raw_response=True`), `cancel_all_after`, compensating-close в `place_order` (через ack, не openOrders).
+- `adapters/bingx/exceptions.py` (+ `OrderRejected`).
+- `adapters/bingx/client.py`: `request_signed(..., raw_response=True)` + `_parse_raw_json` толерантный к пустому body.
+- `config.yaml`/`config.py`: эндпоинты `cancel_all_after`, `user_data_stream`; новые секции `place_order` (compensating thresholds), `user_data_stream` (keep-alive interval, reconnect), `cancel_all_after` (timeout window).
+- 11 новых unit-тестов; общее покрытие сохранено ≥70%. ruff + mypy strict — чисто.
+- Integration на live VST: listenKey lifecycle + user-stream получает `ORDER_TRADE_UPDATE` после `place_order` — зелёные. `cancelAllAfter` пропускается (404 на VST).
+- §7 пополнен **4 новыми квирками** (п.34–37): userDataStream без envelope; PUT/DELETE с пустым body; attached SL в ack, не в openOrders; cancelAllAfter 404 на VST.
+- §11 фаза 0.D part 2 помечена закрытой. §13 переключён на фазу 0.E (hardening + метрики).
+
+Сессия 2026-05-11 (фаза 0.D part 1 — ордера и kill switch на VST):
+- `plans/05-фаза-0D.md` — план фазы (контекст, спецификация, защита, чек-лист).
+- `adapters/bingx/private_models.py`: `OrderRequest` (с инвариантами) + `OrderAck` (для коротких ответов POST/DELETE /trade/order).
+- `adapters/bingx/private.py`: `place_order` (атомарный entry+SL/TP через stringified JSON, `MARK_PRICE`), `cancel_order` (по orderId или clientOrderID), `cancel_all` (idempotent при «nothing to cancel»), `close_position` (kill switch: cancel_all → market reduce_only).
+- `config.yaml`/`config.py`: добавлены trade-эндпоинты (`place_order`, `cancel_order`, `cancel_all_orders`).
+- 11 новых unit-тестов; общее покрытие **83.84%**. ruff + mypy strict — чисто.
+- Integration на live VST: полный жизненный цикл BTC-USDT позиции (open market+SL → assert position → close → assert flat) — зелёный.
+- §7 пополнен 2 новыми квирками (п.32–33): `stopPrice` обязан быть JSON-числом не строкой; в one-way write-методах `positionSide` обязан быть `BOTH`.
+- §11 фаза 0.D part 1 помечена закрытой. §13 переключён на фазу 0.D part 2 (user-data stream, cancelAllAfter, compensating-close, stop/tp как самостоятельные ордера).
 
 Сессия 2026-05-11 (фаза 0.C — приватный read + idempotent setters на VST):
 - `plans/04-фаза-0C.md` — план фазы (контекст, скоуп, 10 причин провала, чек-лист).

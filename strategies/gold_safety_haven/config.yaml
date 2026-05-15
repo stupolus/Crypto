@@ -1,0 +1,39 @@
+# GoldSafetyHaven — XAUT-USDT (Tether Gold на BingX VST), 1h, LONG-only
+# Все числа обоснованы в plans/19-asset-strategies.md §«Gold».
+# При изменении: сначала правим план (там обоснования), потом сюда.
+#
+# Symbol: XAUT-USDT — Tether Gold (1 XAUT = 1oz gold). На BingX VST это
+# реальное имя для золотого perp. Старое XAU-USDT не существует в BingX.
+
+symbol: XAUT-USDT
+timeframe: 1h
+
+# Donchian — широкий, gold trends медленнее BTC
+donchian_n: 50         # ≈2 суток на 1h
+
+# ATR
+atr_window: 14
+atr_percentile_min: 0.6      # выше чем BTC — gold ралли требуют impulse
+atr_percentile_lookback: 500 # ~3 недели на 1h
+
+# Volume
+volume_sma_window: 20
+volume_multiplier: 1.3       # ниже чем BTC (gold-volume less spiky)
+
+# Composite (funding rate cap на gold perp обычно tighter)
+funding_rate_max_pct: 0.03
+
+# Stop
+stop_min_pct: 0.4            # gold менее волатилен
+
+# TP
+tp1_r_multiple: 2.0          # gold trends длиннее → длиннее target
+
+# Trailing (для будущей реализации)
+tp2_trailing_ema: 21
+
+# Risk
+risk_tier: B                 # 1% базовый
+
+# Safe-haven asymmetry: только лонги
+direction_bias: long_only

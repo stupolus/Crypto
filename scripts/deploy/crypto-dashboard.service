@@ -1,0 +1,38 @@
+[Unit]
+Description=Crypto Dashboard FastAPI server (read-only JSON API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=-/etc/crypto/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=CRYPTO_DASHBOARD_HOST=127.0.0.1
+Environment=CRYPTO_DASHBOARD_PORT=8081
+Environment=CRYPTO_OUTCOMES_DB=/var/lib/crypto/llm-outcomes.sqlite
+Environment=CRYPTO_HALT_FLAG_FILE=/var/lib/crypto/halt
+Environment=CRYPTO_HEARTBEAT_FILE=/var/lib/crypto/llm-runner.heartbeat
+ExecStart=/opt/crypto/.venv/bin/python -m core.dashboard.server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/crypto /var/log/crypto
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

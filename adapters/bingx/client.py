@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import logging
 import time
 from collections import deque
 from collections.abc import Mapping
@@ -48,6 +49,42 @@ from adapters.bingx.exceptions import (
 )
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.time_sync import ServerTimeSyncer
+
+logger = logging.getLogger(__name__)
+
+# ── Логирование/маскирование секретов (фаза 0.E) ────────────────────────────
+# Никогда не логируем сырые `signature` и `X-BX-APIKEY`.
+_SENSITIVE_QUERY_PARAMS = ("signature",)
+_SENSITIVE_HEADERS_CI = ("x-bx-apikey",)
+_MASK = "***"
+
+
+def mask_signed_url(url: str) -> str:
+    """Заменить значения чувствительных query-параметров на ``***``.
+
+    Полезно для логирования signed-запросов: ``...&signature=abcd1234`` →
+    ``...&signature=***``.
+    """
+    if "?" not in url:
+        return url
+    base, query = url.split("?", 1)
+    masked_parts: list[str] = []
+    for part in query.split("&"):
+        if "=" not in part:
+            masked_parts.append(part)
+            continue
+        key, _ = part.split("=", 1)
+        if key.lower() in _SENSITIVE_QUERY_PARAMS:
+            masked_parts.append(f"{key}={_MASK}")
+        else:
+            masked_parts.append(part)
+    return f"{base}?{'&'.join(masked_parts)}"
+
+
+def mask_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    """Вернуть копию headers с замаскированными значениями ключей API."""
+    return {k: (_MASK if k.lower() in _SENSITIVE_HEADERS_CI else v) for k, v in headers.items()}
+
 
 # Бизнес-коды BingX, означающие «локальный timestamp не попадает в recvWindow
 # серверного времени». 100400 — generic «parameter error» из которого BingX
@@ -142,11 +179,15 @@ class BingXClient:
         if settings is not None and settings.env != self._config.env:
             self._config = self._config.model_copy(update={"env": settings.env})
         # explicit > settings > None
-        self._api_key = api_key if api_key is not None else (
-            settings.active_key if settings is not None else None
+        self._api_key = (
+            api_key
+            if api_key is not None
+            else (settings.active_key if settings is not None else None)
         )
-        self._api_secret = api_secret if api_secret is not None else (
-            settings.active_secret if settings is not None else None
+        self._api_secret = (
+            api_secret
+            if api_secret is not None
+            else (settings.active_secret if settings is not None else None)
         )
         timeout = httpx.Timeout(
             self._config.http.total_timeout_s,
@@ -218,6 +259,7 @@ class BingXClient:
         path: str,
         *,
         params: Mapping[str, Any] | None = None,
+        raw_response: bool = False,
     ) -> Any:
         """Приватный (подписанный) запрос.
 
@@ -228,6 +270,11 @@ class BingXClient:
         4. Header ``X-BX-APIKEY``.
         5. Если BingX вернул timestamp-ошибку — форсим resync и повторяем
            один раз. Дальше — поднимаем APIError.
+
+        ``raw_response=True`` отключает разворачивание envelope
+        ``{code, msg, data}``: возвращает сырой JSON-объект.
+        Нужен для эндпоинтов, не следующих стандартному формату
+        (квирк §7 п.34: ``/openApi/user/auth/userDataStream``).
         """
         if not self._api_key or not self._api_secret:
             raise AuthError(
@@ -235,13 +282,13 @@ class BingXClient:
                 "set BINGX_VST_API_KEY/BINGX_VST_API_SECRET in .env"
             )
         try:
-            return await self._do_signed(method, path, params=params)
+            return await self._do_signed(method, path, params=params, raw_response=raw_response)
         except APIError as err:
             if not _is_timestamp_error(err):
                 raise
             # Часы поплыли — форсим resync и повторяем ровно один раз.
             await self._time_syncer.sync()
-            return await self._do_signed(method, path, params=params)
+            return await self._do_signed(method, path, params=params, raw_response=raw_response)
 
     async def _do_signed(
         self,
@@ -249,6 +296,7 @@ class BingXClient:
         path: str,
         *,
         params: Mapping[str, Any] | None,
+        raw_response: bool = False,
     ) -> Any:
         # Два подтверждённых квирка live BingX VST (2026-05-11, см. plans/01 §7):
         # 1. Передача `recvWindow` в params/подписи приводит к
@@ -271,7 +319,9 @@ class BingXClient:
         sorted_biz["signature"] = signature
         await self._market_bucket.acquire()
         headers = {self._config.signing.api_key_header: self._api_key}
-        return await self._send_with_retry(method, path, params=sorted_biz, headers=headers)
+        return await self._send_with_retry(
+            method, path, params=sorted_biz, headers=headers, raw_response=raw_response
+        )
 
     # ── Внутренности ───────────────────────────────────────────────────────
     async def _send_with_retry(
@@ -281,11 +331,13 @@ class BingXClient:
         *,
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
+        raw_response: bool = False,
     ) -> Any:
         retry_cfg = self._config.http.retry
         last_exc: Exception | None = None
         delay = retry_cfg.backoff_initial_s
         for attempt in range(1, retry_cfg.max_attempts + 1):
+            request_started_ms = int(time.time() * 1000)
             try:
                 response = await self._http.request(
                     method,
@@ -294,12 +346,30 @@ class BingXClient:
                     headers=dict(headers) if headers else None,
                 )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
+                logger.warning(
+                    "bingx %s %s transport error: %s (attempt %d)",
+                    method,
+                    path,
+                    exc,
+                    attempt,
+                )
                 last_exc = NetworkError(f"transport error on {method} {path}: {exc}")
                 if attempt >= retry_cfg.max_attempts:
                     break
                 await asyncio.sleep(delay)
                 delay = min(delay * retry_cfg.backoff_factor, retry_cfg.backoff_max_s)
                 continue
+
+            latency_ms = int(time.time() * 1000) - request_started_ms
+            logger.debug(
+                "bingx %s %s status=%d latency=%dms url=%s headers=%s",
+                method,
+                path,
+                response.status_code,
+                latency_ms,
+                mask_signed_url(str(response.request.url)),
+                mask_headers(dict(response.request.headers)),
+            )
 
             status = response.status_code
             if status == 401 or status == 403:
@@ -319,6 +389,8 @@ class BingXClient:
                 continue
             if status >= 400:
                 raise APIError(status, response.text[:200], endpoint=path)
+            if raw_response:
+                return self._parse_raw_json(response, path)
             return self._unwrap_payload(response, path)
 
         assert last_exc is not None  # цикл прошёл retry без успеха
@@ -343,6 +415,22 @@ class BingXClient:
             return None
         wait_s = expire_ms / 1000 - time.time()
         return max(wait_s, 0.0)
+
+    @staticmethod
+    def _parse_raw_json(response: httpx.Response, path: str) -> Any:
+        """Распарсить JSON без проверки envelope. Для эндпоинтов вне
+        стандартного формата (квирк §7 п.34: userDataStream).
+
+        Квирк §7 п.35: PUT/DELETE userDataStream возвращают **пустой body**
+        (не JSON). Возвращаем `{}` чтобы PrivateAPI не падал.
+        """
+        text = response.text
+        if not text or not text.strip():
+            return {}
+        try:
+            return response.json()
+        except ValueError as e:
+            raise InvalidResponseError(f"non-JSON response from {path}: {e}") from e
 
     @staticmethod
     def _unwrap_payload(response: httpx.Response, path: str) -> Any:

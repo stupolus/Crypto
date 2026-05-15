@@ -1,0 +1,23 @@
+# US session breakout — параметры выбраны ДО прогона.
+# Никакой подгонки под backtest (см. AGENTS.md).
+
+symbol: BTC-USDT
+timeframe: 15m
+
+# Session windows (UTC hours).
+asian_start_hour_utc: 0          # midnight UTC
+asian_end_hour_utc: 13           # до US session
+us_start_hour_utc: 13            # после Asian — окно пробоя
+us_end_hour_utc: 15              # 2-часовое окно
+eod_close_hour_utc: 23           # закрываем перед следующей Asian
+
+# Range filters (учат не торговать на flat / уже-волатильных днях).
+min_range_pct: 0.5               # минимум 0.5% от midpoint (риск-профиль stop_min_pct)
+max_range_pct: 5.0               # >5% — уже сильно волатильно, breakout less reliable
+
+# Stop & TP.
+stop_min_pct: 0.5                # минимум из риск-профиля
+tp1_r_multiple: 1.5              # стандарт R:R
+
+# Risk
+risk_tier: B                     # 1.0% риск

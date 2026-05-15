@@ -1,0 +1,31 @@
+# Конфиг для итерации 2: тот же Donchian breakout, но на 1h TF.
+# Параметры подобраны ДО прогона — никакой подгонки под результат.
+# Обоснование выбора TF и значений — в plans/12-стратегия-1h-oos.md.
+
+symbol: BTC-USDT
+timeframe: 1h    # декларативно — TF определяется источником свечей.
+
+# Donchian channel: 20 часов окно
+donchian_n: 20
+
+# ATR (Wilder) — тот же window
+atr_window: 14
+atr_percentile_min: 0.5            # тот же — верхняя половина распределения
+atr_percentile_lookback: 200       # 200 часов = ~8 дней на 1h
+
+# Volume — тот же
+volume_sma_window: 20
+volume_multiplier: 1.5
+
+# Composite — тот же
+funding_rate_max_pct: 0.05
+
+# Stop & TP — тот же
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+
+# Trailing — тот же (на MVP не используется, но в config обязателен)
+tp2_trailing_ema: 21
+
+# Risk
+risk_tier: B

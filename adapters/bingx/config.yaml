@@ -82,6 +82,14 @@ rest_endpoints:
   set_margin_type: /openApi/swap/v2/trade/marginType
   set_leverage: /openApi/swap/v2/trade/leverage
   set_position_mode: /openApi/swap/v1/positionSide/dual
+  # Ордерные методы (фаза 0.D part 1). POST + DELETE на /trade/order.
+  place_order: /openApi/swap/v2/trade/order
+  cancel_order: /openApi/swap/v2/trade/order
+  cancel_all_orders: /openApi/swap/v2/trade/allOpenOrders
+  # 0.D part 2: dead-man timer.
+  cancel_all_after: /openApi/swap/v2/trade/cancelAllAfter
+  # 0.D part 2: User Data Stream — listenKey CRUD (POST/PUT/DELETE один путь).
+  user_data_stream: /openApi/user/auth/userDataStream
 
 # ─── Klines ──────────────────────────────────────────────────────────────────
 # Источник: docs-v3 → USDT-M Perp Futures → Get K-Line Data.
@@ -129,6 +137,36 @@ defaults:
   primary_interval_rest: 15m
   primary_interval_ws: 1m        # live BingX принимает REST-форму и в WS
   smoke_klines_limit: 10
+
+# ─── Compensating-close (0.D part 2) ─────────────────────────────────────────
+# После place_order(entry+SL) BingX публикует attached SL в openOrders с
+# небольшой задержкой. Адаптер проверяет наличие SL — если за указанные попытки
+# его не находит, закрывает позицию рыночным reduce_only.
+place_order:
+  compensating_check_delay_ms: 500
+  compensating_check_attempts: 3
+  compensating_check_backoff_factor: 2.0
+
+# ─── User Data Stream (0.D part 2) ───────────────────────────────────────────
+# TTL listenKey = 1 час (квирк §7 п.16). Buffer 30 мин: продлеваем за 30 мин до
+# истечения. Если PUT возвращает ошибку — пересоздаём listenKey + reconnect WS.
+user_data_stream:
+  keep_alive_interval_s: 1800            # 30 мин
+  reconnect_initial_delay_s: 1.0
+  reconnect_max_delay_s: 60.0
+  reconnect_factor: 2.0
+  watchdog_silence_s: 60                  # user-stream может молчать долго
+  # Periodic soft-reconcile: каждые N сек эмитим RECONCILE-event с
+  # REST-снимком, даже если WS не разрывался. Защита от «потеря push
+  # в полёте» (BingX баг / network glitch без disconnect).
+  soft_reconcile_interval_s: 120         # 2 мин — защита от «потерянных push в полёте» на D3 demo и live.
+
+# ─── cancelAllAfter (0.D part 2) ─────────────────────────────────────────────
+# Биржевой dead-man (квирк §7 п.24). Если адаптер не сбросит таймер за окно,
+# биржа отменит все открытые ордера.
+cancel_all_after:
+  default_window_ms: 60000               # 60 сек
+  refresh_interval_s: 20                 # 1/3 от окна
 
 # ─── Защитные инварианты ─────────────────────────────────────────────────────
 # Жёсткий запрет «нет стопа на бирже — нет позиции» из бизнес/риск-профиль.md.

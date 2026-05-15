@@ -1,0 +1,32 @@
+# StockEarningsAvoid — NCSKTSLA2USD-USDT (Tesla perp на BingX VST), 15m, both-sided
+# Параметры обоснованы в plans/19-asset-strategies.md §«Stock».
+# Session window — через core/assets registry (stock_perp:us_market_hours).
+# Earnings blackout — через DI calendar (см. calendar.py).
+#
+# Symbol: BingX VST использует NCSK<TICKER>2USD-USDT для stock-perp.
+# Старое TSLA-USDT не существует.
+
+symbol: NCSKTSLA2USD-USDT
+timeframe: 15m
+
+# Donchian — узкий, US-session-relevant (~4 часа на 15m)
+donchian_n: 16
+
+# ATR
+atr_window: 14
+atr_percentile_min: 0.5
+atr_percentile_lookback: 200
+
+# Volume
+volume_sma_window: 20
+volume_multiplier: 1.5
+
+# Funding (stock perp на BingX обычно tighter)
+funding_rate_max_pct: 0.03
+
+# Stop / TP — stocks gap-risk → шире стоп
+stop_min_pct: 0.6
+tp1_r_multiple: 1.5
+tp2_trailing_ema: 21
+
+risk_tier: B

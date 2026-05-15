@@ -17,7 +17,7 @@ from typing import Any
 from adapters.bingx.client import BingXClient
 from adapters.bingx.config import BingXConfig
 from adapters.bingx.exceptions import APIError, InvalidResponseError
-from adapters.bingx.models import Contract, Kline, ServerTime, Ticker
+from adapters.bingx.models import Contract, Kline, OpenInterest, ServerTime, Ticker
 
 
 class PublicAPI:
@@ -69,6 +69,21 @@ class PublicAPI:
             "GET", self._cfg.rest_endpoints.ticker, params=params
         )
         return Ticker.model_validate(_ensure_dict(data, "ticker"))
+
+    # ── open interest ──────────────────────────────────────────────────────
+    async def get_open_interest(self, symbol: str) -> OpenInterest:
+        """``GET /openApi/swap/v2/quote/openInterest?symbol=BTC-USDT``.
+
+        Текущий открытый интерес (snapshot). Главный gate методологии
+        Щукина (см. бизнес/материалы/курсы/dmitry-shukin/): шорт только
+        на падающем OI, лонг на растущем. Для дельты OI вызывать
+        периодически и сравнивать (snapshot, не временной ряд).
+        """
+        params = {"symbol": _normalize_symbol(symbol)}
+        data = await self._client.request_public(
+            "GET", self._cfg.rest_endpoints.open_interest, params=params
+        )
+        return OpenInterest.model_validate(_ensure_dict(data, "open_interest"))
 
     # ── klines ─────────────────────────────────────────────────────────────
     async def get_klines(
