@@ -65,6 +65,7 @@ class DolfContext:
     closes: list[Decimal]
     highs: list[Decimal]
     lows: list[Decimal]
+    volumes: list[Decimal]
     liq: LiquidationProvider
     oi: OpenInterestProvider
     delta: DeltaProvider
@@ -172,10 +173,133 @@ def detect_s3_nedogora(ctx: DolfContext) -> SetupResult:
     return SetupResult(False, name)
 
 
+def _pct(a: Decimal, b: Decimal) -> Decimal:
+    """Изменение b относительно a в %. 0 при a<=0."""
+    if a <= 0:
+        return Decimal("0")
+    return (b / a - 1) * 100
+
+
+def detect_l1_trend_start(ctx: DolfContext) -> SetupResult:
+    """L1 «Начало тренда»: из низковолат. базы vol↑&OI↑&price↑,
+    причём ΔOI% и Δvol% > Δprice% (рост обеспечен деньгами)."""
+    t = ctx.thresholds
+    name = "L1_trend_start"
+    if len(ctx.closes) < t.oi_lookback + 1 or len(ctx.volumes) < t.oi_lookback + 1:
+        return SetupResult(False, name)
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback + 1)
+    if len(oi) < 2:
+        return SetupResult(False, name)
+    d_price = _pct(ctx.closes[-t.oi_lookback - 1], ctx.closes[-1])
+    d_oi = _pct(oi[0], oi[-1])
+    d_vol = _pct(ctx.volumes[-t.oi_lookback - 1], ctx.volumes[-1])
+    if d_price > 0 and d_oi > d_price and d_vol > d_price and d_oi > 0:
+        return SetupResult(
+            True,
+            name,
+            SetupSide.LONG,
+            f"ΔOI {d_oi:.1f}% & Δvol {d_vol:.1f}% > Δprice {d_price:.1f}%",
+        )
+    return SetupResult(False, name)
+
+
+def detect_l3_oi_drop_flat_price(ctx: DolfContext) -> SetupResult:
+    """L3: OI резко вырос ранее, сейчас ↓ при флэте цены → LONG."""
+    t = ctx.thresholds
+    name = "L3_oi_drop_flat_price"
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback * 2)
+    if len(oi) < t.oi_lookback * 2 or len(ctx.closes) < t.oi_lookback:
+        return SetupResult(False, name)
+    half = len(oi) // 2
+    oi_rose_before = _pct(oi[0], max(oi[:half])) > t.oi_div_min_pct
+    oi_falling_now = oi[-1] < max(oi[half:])
+    price_flat = abs(_pct(ctx.closes[-t.oi_lookback], ctx.closes[-1])) < Decimal(
+        str(t.oi_div_min_pct)
+    )
+    if oi_rose_before and oi_falling_now and price_flat:
+        return SetupResult(True, name, SetupSide.LONG, "OI вырос→падает, цена флэт")
+    return SetupResult(False, name)
+
+
+def detect_l4_trend_continuation(ctx: DolfContext) -> SetupResult:
+    """L4: откат цены вниз при стабильном/растущем OI → LONG (докуп)."""
+    t = ctx.thresholds
+    name = "L4_trend_continuation"
+    if len(ctx.closes) < t.oi_lookback + 1:
+        return SetupResult(False, name)
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback)
+    if len(oi) < 2:
+        return SetupResult(False, name)
+    price_pullback = ctx.closes[-1] < ctx.closes[-t.oi_lookback - 1]
+    oi_held = _pct(oi[0], oi[-1]) >= -Decimal(str(t.oi_div_min_pct))
+    if price_pullback and oi_held:
+        return SetupResult(True, name, SetupSide.LONG, "откат цены, OI держится")
+    return SetupResult(False, name)
+
+
+def detect_l5_shortodon(ctx: DolfContext) -> SetupResult:
+    """L5 «Шортодон»: цена↓ но OI↑ & vol↑ (паника шортов) → LONG."""
+    t = ctx.thresholds
+    name = "L5_shortodon"
+    if len(ctx.closes) < t.oi_lookback + 1 or len(ctx.volumes) < t.oi_lookback + 1:
+        return SetupResult(False, name)
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback)
+    if len(oi) < 2:
+        return SetupResult(False, name)
+    price_down = ctx.closes[-1] < ctx.closes[-t.oi_lookback - 1]
+    oi_up = oi[-1] > oi[0]
+    vol_up = ctx.volumes[-1] > ctx.volumes[-t.oi_lookback - 1]
+    if price_down and oi_up and vol_up:
+        return SetupResult(True, name, SetupSide.LONG, "цена↓ при OI↑ и vol↑")
+    return SetupResult(False, name)
+
+
+def detect_s1_oi_drop_after_pump(ctx: DolfContext) -> SetupResult:
+    """S1: сильный рост price+OI, затем OI начал падать → SHORT.
+    ⚠️ план 23: чёткое подтверждение требует 15m (STANDARD-тариф)."""
+    t = ctx.thresholds
+    name = "S1_oi_drop_after_pump"
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback * 2)
+    if len(oi) < t.oi_lookback * 2 or len(ctx.closes) < t.oi_lookback * 2:
+        return SetupResult(False, name)
+    half = len(oi) // 2
+    pumped = (
+        _pct(oi[0], max(oi[:half])) > t.oi_div_min_pct
+        and _pct(ctx.closes[0], max(ctx.closes[:half])) > t.oi_div_min_pct
+    )
+    oi_dropping = oi[-1] < max(oi[half:])
+    if pumped and oi_dropping:
+        return SetupResult(True, name, SetupSide.SHORT, "OI↓ после пампа price+OI")
+    return SetupResult(False, name)
+
+
+def detect_s2_price_oi_divergence(ctx: DolfContext) -> SetupResult:
+    """S2: цена↑ недавно, но OI флэт/↓ (манипуляция) → SHORT."""
+    t = ctx.thresholds
+    name = "S2_price_oi_divergence"
+    if len(ctx.closes) < t.oi_lookback + 1:
+        return SetupResult(False, name)
+    oi = ctx.oi.get_series(ctx.symbol, ctx.timestamp_ms, t.oi_lookback)
+    if len(oi) < 2:
+        return SetupResult(False, name)
+    price_up = _pct(ctx.closes[-t.oi_lookback - 1], ctx.closes[-1]) > t.oi_div_min_pct
+    oi_not_confirming = _pct(oi[0], oi[-1]) <= 0
+    if price_up and oi_not_confirming:
+        return SetupResult(True, name, SetupSide.SHORT, "цена↑ при OI флэт/↓")
+    return SetupResult(False, name)
+
+
 # Реестр для изолированного бэктеста (план 23 фаза 23.2+).
+# S4 (FOMO-свечи) отложен — нужен внутрибарный 15m (STANDARD-тариф).
 ALL_DETECTORS = [
-    detect_l6_long_from_long_liq,
-    detect_s5_short_from_short_liq,
+    detect_l1_trend_start,
     detect_l2_golden_funding,
+    detect_l3_oi_drop_flat_price,
+    detect_l4_trend_continuation,
+    detect_l5_shortodon,
+    detect_l6_long_from_long_liq,
+    detect_s1_oi_drop_after_pump,
+    detect_s2_price_oi_divergence,
     detect_s3_nedogora,
+    detect_s5_short_from_short_liq,
 ]
