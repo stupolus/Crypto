@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" fill="#0a0e14" rx="32"/>
+  <!-- Diamond logo - gold accent -->
+  <path d="M96 32 L160 96 L96 160 L32 96 Z" fill="none" stroke="#d4af37" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M96 48 L144 96 L96 144 L48 96 Z" fill="#d4af37" opacity="0.15"/>
+  <!-- Inner candle -->
+  <line x1="96" y1="56" x2="96" y2="136" stroke="#00ff88" stroke-width="4"/>
+  <rect x="86" y="76" width="20" height="40" fill="#00ff88"/>
+  <!-- Symbol -->
+  <text x="96" y="184" font-family="JetBrains Mono, monospace" font-weight="700" font-size="14" fill="#8b949e" text-anchor="middle">CRYPTO</text>
+</svg>
