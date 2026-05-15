@@ -17,25 +17,47 @@ from typing import Any
 BASE_URL = "https://www.youtube.com/watch?v="
 
 
-def load_json3(raw: str) -> dict[str, Any]:
+def _strip(raw: str) -> str:
     s = raw.strip()
     if s.startswith("```"):
         s = s.split("\n", 1)[1].rsplit("```", 1)[0]
     i = s.find("{")
     if i > 0:
         s = s[i:]
-    data: dict[str, Any] = json.loads(s)
+    return s
+
+
+def load_json3(raw: str) -> dict[str, Any]:
+    data: dict[str, Any] = json.loads(_strip(raw))
     return data
 
 
-def to_text(j: dict[str, Any]) -> tuple[str, int]:
+def salvage_segments(raw: str) -> list[str]:
+    """Regex-recover caption text when the json3 is not strictly valid
+    (Tavily occasionally mangles a backslash in 4MB+ payloads)."""
     out: list[str] = []
-    for e in j.get("events", []):
-        line = "".join(seg.get("utf8", "") for seg in (e.get("segs") or []))
-        line = line.strip()
-        if line:
-            out.append(line)
-    text = " ".join(out)
+    for m in re.finditer(r'"utf8"\s*:\s*"((?:\\.|[^"\\])*)"', _strip(raw)):
+        chunk = m.group(1)
+        try:
+            text = json.loads(f'"{chunk}"')
+        except json.JSONDecodeError:
+            text = re.sub(r"\\.", " ", chunk)
+        if text.strip():
+            out.append(str(text))
+    return out
+
+
+def extract_text(raw: str) -> tuple[str, int]:
+    try:
+        return to_text(load_json3(raw))
+    except (json.JSONDecodeError, ValueError):
+        segs = salvage_segments(raw)
+        if not segs:
+            raise
+        return finalize(" ".join(s.strip() for s in segs if s.strip()))
+
+
+def finalize(text: str) -> tuple[str, int]:
     text = re.sub(r"\s+", " ", text).replace(" .", ".").strip()
     # soft-wrap into sentence-ish paragraphs for readability
     sentences = re.split(r"(?<=[.!?])\s+", text)
@@ -49,6 +71,16 @@ def to_text(j: dict[str, Any]) -> tuple[str, int]:
     if buf:
         paras.append(" ".join(buf))
     return "\n\n".join(paras), len(text)
+
+
+def to_text(j: dict[str, Any]) -> tuple[str, int]:
+    out: list[str] = []
+    for e in j.get("events", []):
+        line = "".join(seg.get("utf8", "") for seg in (e.get("segs") or []))
+        line = line.strip()
+        if line:
+            out.append(line)
+    return finalize(" ".join(out))
 
 
 def vid_from_url(url: str) -> str | None:
@@ -78,8 +110,7 @@ def main() -> None:
                 print(f"SKIP unmatched url {res.get('url', '')[:80]}")
                 continue
             try:
-                j = load_json3(res.get("raw_content", ""))
-                body, n_chars = to_text(j)
+                body, n_chars = extract_text(res.get("raw_content", ""))
             except Exception as e:
                 print(f"FAIL parse {vid}: {e}")
                 continue
