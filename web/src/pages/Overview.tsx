@@ -1,10 +1,14 @@
 import { Link } from "react-router-dom";
-import { api } from "../api";
-import { usePolling, fmtNum, fmtPct, fmtTime } from "../hooks";
+import { api, type StatusResponse } from "../api";
+import { useSse, usePolling, fmtNum, fmtPct, fmtTime } from "../hooks";
 
 export default function Overview() {
-  const { data, error } = usePolling(() => api.status(), 5000);
-  const { data: equity } = usePolling(() => api.equity(50), 10000);
+  // SSE для realtime (5s server-pushed) + polling fallback на случай
+  // что EventSource заблокирован proxy.
+  const { data: sseData } = useSse<StatusResponse>("/stream/events", "status");
+  const { data: pollData, error } = usePolling(() => api.status(), 10000);
+  const data = sseData ?? pollData;
+  const { data: equity } = usePolling(() => api.equity(50), 30000);
 
   if (error) {
     return (

@@ -13,9 +13,11 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from core.dashboard.candles import CandlesFetcher, candle_to_dict
 from core.dashboard.news import NewsAggregator, news_item_to_dict
+from core.dashboard.sse import status_event_stream
 from core.dashboard.state import (
     DashboardState,
     agents_to_dicts,
@@ -171,5 +173,23 @@ def create_app(
             "interval": interval,
             "candles": [candle_to_dict(c) for c in cs],
         }
+
+    @app.get("/stream/events")
+    async def event_stream() -> StreamingResponse:
+        """SSE поток — каждые 5s emit'ит ``event: status`` + JSON.
+
+        Frontend подключается через EventSource("/stream/events") и
+        hot-обновляет state без polling. Caddy/nginx proxy buffer'ы
+        отключены (X-Accel-Buffering: no).
+        """
+        return StreamingResponse(
+            status_event_stream(state),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     return app
