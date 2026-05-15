@@ -10,9 +10,11 @@ unit-тестах — статичные in-memory заглушки.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
+
+from core.signals.liquidation_sweep import LiquidationBucket
 
 
 @runtime_checkable
@@ -135,13 +137,107 @@ class CompositeNewsCalendar:
         return any(c.is_paused(timestamp_ms) for c in self._calendars)
 
 
+# ── Провайдеры для liquidation_reversal (план 21 фаза 21.1) ──────────────
+
+
+@runtime_checkable
+class LiquidationProvider(Protocol):
+    """Источник ликвидаций per symbol на момент времени.
+
+    ``get_bucket`` — агрегированные ликвидации (long/short USD) за
+    бакет, в который попадает ``timestamp_ms``. ``None`` — нет данных
+    (composite-фильтр пропускает проверку без сигнала).
+    """
+
+    def get_bucket(self, symbol: str, timestamp_ms: int) -> LiquidationBucket | None: ...
+
+    def get_baseline(self, symbol: str, timestamp_ms: int, n: int) -> list[LiquidationBucket]: ...
+
+
+@runtime_checkable
+class OpenInterestProvider(Protocol):
+    """Источник ряда открытого интереса (ASC по времени, oldest→newest).
+
+    ``get_series`` — последние ``n`` значений OI до ``timestamp_ms``
+    включительно. Пустой список — нет данных.
+    """
+
+    def get_series(self, symbol: str, timestamp_ms: int, n: int) -> list[Decimal]: ...
+
+
+@runtime_checkable
+class DeltaProvider(Protocol):
+    """Источник кумулятивной дельты (CVD) — ряд ASC по времени.
+
+    ``get_cvd_series`` — последние ``n`` значений CVD до
+    ``timestamp_ms``. Пустой список — нет данных.
+    """
+
+    def get_cvd_series(self, symbol: str, timestamp_ms: int, n: int) -> list[Decimal]: ...
+
+
+class StaticLiquidationProvider:
+    """In-memory заглушка. ``buckets`` — symbol → {ts_ms: LiquidationBucket}.
+
+    ``get_bucket`` ищет точное совпадение ts. ``get_baseline`` — n
+    бакетов СТРОГО до ts (по возрастанию времени). Для backtest/тестов.
+    """
+
+    def __init__(
+        self, buckets: Mapping[str, Mapping[int, LiquidationBucket]] | None = None
+    ) -> None:
+        self._b: dict[str, dict[int, LiquidationBucket]] = {
+            s: dict(m) for s, m in (buckets or {}).items()
+        }
+
+    def get_bucket(self, symbol: str, timestamp_ms: int) -> LiquidationBucket | None:
+        return self._b.get(symbol, {}).get(timestamp_ms)
+
+    def get_baseline(self, symbol: str, timestamp_ms: int, n: int) -> list[LiquidationBucket]:
+        items = sorted(self._b.get(symbol, {}).items())
+        prior = [bucket for ts, bucket in items if ts < timestamp_ms]
+        return prior[-n:]
+
+
+class StaticOpenInterestProvider:
+    """In-memory заглушка. ``series`` — symbol → [(ts_ms, oi), ...]."""
+
+    def __init__(self, series: Mapping[str, Sequence[tuple[int, Decimal]]] | None = None) -> None:
+        self._s: dict[str, list[tuple[int, Decimal]]] = {
+            sym: sorted(pts) for sym, pts in (series or {}).items()
+        }
+
+    def get_series(self, symbol: str, timestamp_ms: int, n: int) -> list[Decimal]:
+        pts = [v for ts, v in self._s.get(symbol, []) if ts <= timestamp_ms]
+        return pts[-n:]
+
+
+class StaticDeltaProvider:
+    """In-memory заглушка. ``series`` — symbol → [(ts_ms, cvd), ...]."""
+
+    def __init__(self, series: Mapping[str, Sequence[tuple[int, Decimal]]] | None = None) -> None:
+        self._s: dict[str, list[tuple[int, Decimal]]] = {
+            sym: sorted(pts) for sym, pts in (series or {}).items()
+        }
+
+    def get_cvd_series(self, symbol: str, timestamp_ms: int, n: int) -> list[Decimal]:
+        pts = [v for ts, v in self._s.get(symbol, []) if ts <= timestamp_ms]
+        return pts[-n:]
+
+
 __all__ = [
     "Blacklist",
     "CompositeNewsCalendar",
+    "DeltaProvider",
     "FundingProvider",
+    "LiquidationProvider",
     "NewsCalendar",
+    "OpenInterestProvider",
     "SetBlacklist",
+    "StaticDeltaProvider",
     "StaticFundingProvider",
+    "StaticLiquidationProvider",
     "StaticNewsCalendar",
+    "StaticOpenInterestProvider",
     "WeeklyEventCalendar",
 ]
