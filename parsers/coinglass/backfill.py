@@ -16,7 +16,9 @@ Symbol mapping: BingX-формат (``BTC-USDT``) → Coinglass
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from decimal import Decimal
+from typing import TypeVar
 
 from core.signals import (
     StaticDeltaProvider,
@@ -27,6 +29,53 @@ from core.signals.liquidation_sweep import LiquidationBucket
 from parsers.coinglass.client import CoinglassClient
 
 logger = logging.getLogger(__name__)
+
+# Длительность интервала в ms (Coinglass HOBBYIST: 4h+).
+_INTERVAL_MS: dict[str, int] = {
+    "4h": 4 * 3_600_000,
+    "6h": 6 * 3_600_000,
+    "8h": 8 * 3_600_000,
+    "12h": 12 * 3_600_000,
+    "1d": 24 * 3_600_000,
+    "1w": 7 * 24 * 3_600_000,
+}
+_MAX_LIMIT = 1000
+
+_T = TypeVar("_T")
+
+
+def _paginate(
+    fetch: Callable[[int, int], list[_T]],
+    *,
+    start_ms: int,
+    end_ms: int,
+    interval_ms: int,
+    ts_of: Callable[[_T], int],
+) -> list[_T]:
+    """Окно-цикл: Coinglass отдаёт ≤1000 точек/запрос. Идём от start_ms
+    вперёд окнами по 1000 баров, склеиваем, дедуп по ts.
+
+    Останов: дошли до end_ms ИЛИ запрос вернул пусто (нет данных /
+    план не активен) — защита от бесконечного цикла.
+    """
+    window_ms = _MAX_LIMIT * interval_ms
+    seen: dict[int, _T] = {}
+    cursor = start_ms
+    guard = 0
+    while cursor < end_ms and guard < 100:
+        guard += 1
+        win_end = min(cursor + window_ms, end_ms)
+        rows = fetch(cursor, win_end)
+        if not rows:
+            break
+        for r in rows:
+            seen[ts_of(r)] = r
+        max_ts = max(ts_of(r) for r in rows)
+        if max_ts < cursor + interval_ms:
+            break  # не продвинулись — стоп
+        cursor = max_ts + interval_ms
+    return [seen[k] for k in sorted(seen)]
+
 
 # BingX symbol → (Coinglass exchange, Coinglass symbol, Coinglass OI coin).
 _SYMBOL_MAP: dict[str, tuple[str, str, str]] = {
@@ -66,14 +115,71 @@ def backfill_providers(
         )
 
     exchange, cg_symbol, cg_coin = mapping
+    interval_ms = _INTERVAL_MS.get(interval)
 
-    liq_rows = cg.get_liquidation_history(
-        exchange=exchange,
-        symbol=cg_symbol,
-        interval=interval,
-        start_time_ms=start_time_ms,
-        end_time_ms=end_time_ms,
-    )
+    if interval_ms is None:
+        # Неизвестный/мелкий интервал — один запрос (≤1000 точек).
+        liq_rows = cg.get_liquidation_history(
+            exchange=exchange,
+            symbol=cg_symbol,
+            interval=interval,
+            start_time_ms=start_time_ms,
+            end_time_ms=end_time_ms,
+        )
+        oi_rows = cg.get_open_interest_history(
+            symbol=cg_coin,
+            interval=interval,
+            start_time_ms=start_time_ms,
+            end_time_ms=end_time_ms,
+        )
+        cvd_rows = cg.get_cvd_history(
+            exchange=exchange,
+            symbol=cg_symbol,
+            interval=interval,
+            start_time_ms=start_time_ms,
+            end_time_ms=end_time_ms,
+        )
+    else:
+        # Пагинация: окнами по 1000 баров покрываем весь диапазон.
+        liq_rows = _paginate(
+            lambda s, e: cg.get_liquidation_history(
+                exchange=exchange,
+                symbol=cg_symbol,
+                interval=interval,
+                start_time_ms=s,
+                end_time_ms=e,
+            ),
+            start_ms=start_time_ms,
+            end_ms=end_time_ms,
+            interval_ms=interval_ms,
+            ts_of=lambda r: r.timestamp_ms,
+        )
+        oi_rows = _paginate(
+            lambda s, e: cg.get_open_interest_history(
+                symbol=cg_coin,
+                interval=interval,
+                start_time_ms=s,
+                end_time_ms=e,
+            ),
+            start_ms=start_time_ms,
+            end_ms=end_time_ms,
+            interval_ms=interval_ms,
+            ts_of=lambda r: r[0],
+        )
+        cvd_rows = _paginate(
+            lambda s, e: cg.get_cvd_history(
+                exchange=exchange,
+                symbol=cg_symbol,
+                interval=interval,
+                start_time_ms=s,
+                end_time_ms=e,
+            ),
+            start_ms=start_time_ms,
+            end_ms=end_time_ms,
+            interval_ms=interval_ms,
+            ts_of=lambda r: r[0],
+        )
+
     buckets: dict[int, LiquidationBucket] = {
         r.timestamp_ms: LiquidationBucket(
             long_volume=r.long_liquidation_usd,
@@ -81,22 +187,7 @@ def backfill_providers(
         )
         for r in liq_rows
     }
-
-    oi_rows = cg.get_open_interest_history(
-        symbol=cg_coin,
-        interval=interval,
-        start_time_ms=start_time_ms,
-        end_time_ms=end_time_ms,
-    )
     oi_series: list[tuple[int, Decimal]] = list(oi_rows)
-
-    cvd_rows = cg.get_cvd_history(
-        exchange=exchange,
-        symbol=cg_symbol,
-        interval=interval,
-        start_time_ms=start_time_ms,
-        end_time_ms=end_time_ms,
-    )
     cvd_series: list[tuple[int, Decimal]] = list(cvd_rows)
 
     logger.info(

@@ -100,3 +100,41 @@ def test_plan_inactive_yields_empty_but_no_crash() -> None:
     assert liq.get_bucket("BTC-USDT", 1000) is None
     assert oi.get_series("BTC-USDT", 9999, 5) == []
     assert delta.get_cvd_series("BTC-USDT", 9999, 5) == []
+
+
+@respx.mock
+def test_pagination_multi_window() -> None:
+    """4h-интервал → пагинация: 2 окна склеиваются, дедуп по ts."""
+    _4H = 4 * 3_600_000
+    t0 = 1_700_000_000_000  # реалистичный epoch-ms (ts > 0)
+    calls = {"liq": 0}
+
+    def _liq(request: httpx.Request) -> httpx.Response:
+        calls["liq"] += 1
+        if calls["liq"] == 1:
+            data = [
+                {"time": t0, "long_liquidation_usd": "1", "short_liquidation_usd": "0"},
+                {"time": t0 + _4H, "long_liquidation_usd": "2", "short_liquidation_usd": "0"},
+            ]
+        else:
+            data = [
+                {"time": t0 + _4H, "long_liquidation_usd": "2", "short_liquidation_usd": "0"},
+                {"time": t0 + 2 * _4H, "long_liquidation_usd": "3", "short_liquidation_usd": "0"},
+            ]
+        return httpx.Response(200, json={"code": "0", "data": data})
+
+    respx.get(f"{_BASE}/api/futures/liquidation/history").mock(side_effect=_liq)
+    respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
+        return_value=httpx.Response(200, json={"code": "0", "data": []})
+    )
+    respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(
+        return_value=httpx.Response(200, json={"code": "0", "data": []})
+    )
+    liq, _oi, _delta = backfill_providers(
+        "BTC-USDT", "4h", start_time_ms=t0, end_time_ms=t0 + 3 * _4H, client=_cg()
+    )
+    # 3 уникальных ts — t0+4h дедуплицирован между окнами
+    assert liq.get_bucket("BTC-USDT", t0) is not None
+    assert liq.get_bucket("BTC-USDT", t0 + _4H) is not None
+    assert liq.get_bucket("BTC-USDT", t0 + 2 * _4H) is not None
+    assert calls["liq"] >= 2  # реально было >1 окна
