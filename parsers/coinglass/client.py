@@ -1,19 +1,21 @@
 """Coinglass HTTP-клиент (план 21 фаза 21.4).
 
-Подтверждено пробой реального ключа + docs.coinglass.com 2026-05-15:
-- Base: ``https://open-api-v4.coinglass.com``
-- Auth header: ``CG-API-KEY``
-- Envelope: ``{"code":"0","msg":"success","data":[...]}``
-- Liquidation history: ``GET /api/futures/liquidation/history``
-  params: exchange, symbol, interval, limit≤1000, start_time, end_time (ms)
+Подтверждено ЖИВЫМ ключом (HOBBYIST $29) 2026-05-15:
+- Base: ``https://open-api-v4.coinglass.com``, header ``CG-API-KEY``
+- Envelope: ``{"code":"0","msg":"...","data":[...]}``
+- ``/api/futures/liquidation/history`` → {time, long_liquidation_usd,
+  short_liquidation_usd}
+- ``/api/futures/open-interest/aggregated-history`` → OHLC (берём close)
+- ``/api/futures/taker-buy-sell-volume/history`` → {taker_buy_volume_usd,
+  taker_sell_volume_usd} → CVD = cumsum(buy−sell) (решает блокер B2)
+- ``/api/futures/funding-rate/history`` → OHLC funding (берём close)
 
-⚠️ Без активного платного плана любой endpoint отдаёт
-``{"code":"401","msg":"Upgrade plan"}``. Клиент это ловит и возвращает
-пусто + WARNING (стратегия остаётся no-op, не падает). Как только план
-оплачен — работает без изменений кода.
+⚠️ Тариф HOBBYIST: liquidation/история только interval ∈
+{4h,6h,8h,12h,1d,1w}. 15m/1h требуют STANDARD. Стратегия
+liquidation_reversal должна гоняться на 4h+ на этом плане.
 
-OI-history путь пока не подтверждён живым ключом (план не активен);
-вынесен в конфиг ``oi_history_path`` чтобы поправить одной строкой.
+Graceful: 401/403/upgrade/network → ``[]`` + WARNING (стратегия
+no-op, не падает).
 """
 
 from __future__ import annotations
@@ -209,4 +211,80 @@ class CoinglassClient:
                 or 0
             )
             out.append((int(ts), _to_decimal(val)))
+        return out
+
+    def get_cvd_history(
+        self,
+        *,
+        exchange: str,
+        symbol: str,
+        interval: str,
+        limit: int = 1000,
+        start_time_ms: int | None = None,
+        end_time_ms: int | None = None,
+    ) -> list[tuple[int, Decimal]]:
+        """CVD = накопленная (taker_buy − taker_sell) из taker-volume.
+
+        Coinglass ``/api/futures/taker-buy-sell-volume/history`` отдаёт
+        per-bar buy/sell USD (подтверждено живым ключом 2026-05-15).
+        Дельта бара = buy−sell; CVD = кумулятивная сумма (как в видео
+        011 Щукина). Возвращаем [(ts, cvd)] ASC.
+        """
+        params: dict[str, Any] = {
+            "exchange": exchange,
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(max(limit, 1), 1000),
+        }
+        if start_time_ms is not None:
+            params["start_time"] = start_time_ms
+        if end_time_ms is not None:
+            params["end_time"] = end_time_ms
+        rows = self._get("/api/futures/taker-buy-sell-volume/history", params)
+        timed: list[tuple[int, dict[str, Any]]] = []
+        for r in rows:
+            raw_ts = r.get("time") or r.get("timestamp")
+            if raw_ts is None:
+                continue
+            timed.append((int(raw_ts), r))
+        timed.sort(key=lambda x: x[0])
+        cvd = Decimal("0")
+        out: list[tuple[int, Decimal]] = []
+        for ts, r in timed:
+            buy = _to_decimal(r.get("taker_buy_volume_usd") or r.get("buy") or 0)
+            sell = _to_decimal(r.get("taker_sell_volume_usd") or r.get("sell") or 0)
+            cvd += buy - sell
+            out.append((ts, cvd))
+        return out
+
+    def get_funding_history(
+        self,
+        *,
+        exchange: str,
+        symbol: str,
+        interval: str,
+        limit: int = 1000,
+        start_time_ms: int | None = None,
+        end_time_ms: int | None = None,
+    ) -> list[tuple[int, Decimal]]:
+        """Funding rate (доля, не %). [(ts, funding_close)] ASC.
+
+        ``/api/futures/funding-rate/history`` — OHLC; берём ``close``.
+        """
+        params: dict[str, Any] = {
+            "exchange": exchange,
+            "symbol": symbol,
+            "interval": interval,
+            "limit": min(max(limit, 1), 1000),
+        }
+        if start_time_ms is not None:
+            params["start_time"] = start_time_ms
+        if end_time_ms is not None:
+            params["end_time"] = end_time_ms
+        out: list[tuple[int, Decimal]] = []
+        for row in self._get("/api/futures/funding-rate/history", params):
+            ts = row.get("time") or row.get("timestamp")
+            if ts is None:
+                continue
+            out.append((int(ts), _to_decimal(row.get("close") or 0)))
         return out

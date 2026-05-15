@@ -104,3 +104,45 @@ def test_auth_header_sent() -> None:
         exchange="Binance", symbol="BTCUSDT", interval="1h"
     )
     assert route.calls[0].request.headers["CG-API-KEY"] == "secret123"
+
+
+@respx.mock
+def test_cvd_history_cumulative() -> None:
+    respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {"time": 2000, "taker_buy_volume_usd": "10", "taker_sell_volume_usd": "70"},
+                    {"time": 1000, "taker_buy_volume_usd": "100", "taker_sell_volume_usd": "40"},
+                ],
+            },
+        )
+    )
+    cvd = _client().get_cvd_history(exchange="Binance", symbol="BTCUSDT", interval="4h")
+    # sorted by ts: bar1 +60 → 60, bar2 (10-70=-60) → 0
+    assert cvd == [(1000, Decimal("60")), (2000, Decimal("0"))]
+
+
+@respx.mock
+def test_funding_history_close() -> None:
+    respx.get(f"{_BASE}/api/futures/funding-rate/history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {
+                        "time": 1000,
+                        "open": "0.001",
+                        "high": "0.002",
+                        "low": "0",
+                        "close": "-0.0002",
+                    },
+                ],
+            },
+        )
+    )
+    f = _client().get_funding_history(exchange="Binance", symbol="BTCUSDT", interval="4h")
+    assert f == [(1000, Decimal("-0.0002"))]

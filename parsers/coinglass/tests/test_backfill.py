@@ -25,11 +25,14 @@ def test_map_symbol() -> None:
 
 
 def test_unknown_symbol_returns_empty_providers() -> None:
-    liq, oi = backfill_providers("XAUT-USDT", "1h", start_time_ms=0, end_time_ms=1, client=_cg())
+    liq, oi, delta = backfill_providers(
+        "XAUT-USDT", "4h", start_time_ms=0, end_time_ms=1, client=_cg()
+    )
     assert isinstance(liq, StaticLiquidationProvider)
     assert isinstance(oi, StaticOpenInterestProvider)
     assert liq.get_bucket("XAUT-USDT", 0) is None
     assert oi.get_series("XAUT-USDT", 999, 5) == []
+    assert delta.get_cvd_series("XAUT-USDT", 999, 5) == []
 
 
 @respx.mock
@@ -58,10 +61,26 @@ def test_backfill_populates_providers() -> None:
             },
         )
     )
-    liq, oi = backfill_providers("BTC-USDT", "1h", start_time_ms=0, end_time_ms=9999, client=_cg())
+    respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {"time": 1000, "taker_buy_volume_usd": "100", "taker_sell_volume_usd": "40"},
+                    {"time": 2000, "taker_buy_volume_usd": "10", "taker_sell_volume_usd": "70"},
+                ],
+            },
+        )
+    )
+    liq, oi, delta = backfill_providers(
+        "BTC-USDT", "4h", start_time_ms=0, end_time_ms=9999, client=_cg()
+    )
     b = liq.get_bucket("BTC-USDT", 1000)
     assert b is not None and b.long_volume == Decimal("50000")
     assert oi.get_series("BTC-USDT", 2000, 5) == [Decimal("5000000"), Decimal("5100000")]
+    # CVD кумулятивный: bar1 +60, bar2 +(10-70)=-60 → [60, 0]
+    assert delta.get_cvd_series("BTC-USDT", 2000, 5) == [Decimal("60"), Decimal("0")]
 
 
 @respx.mock
@@ -72,6 +91,12 @@ def test_plan_inactive_yields_empty_but_no_crash() -> None:
     respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
         return_value=httpx.Response(200, json={"code": "401", "msg": "Upgrade plan"})
     )
-    liq, oi = backfill_providers("BTC-USDT", "1h", start_time_ms=0, end_time_ms=9999, client=_cg())
+    respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(
+        return_value=httpx.Response(200, json={"code": "401", "msg": "Upgrade plan"})
+    )
+    liq, oi, delta = backfill_providers(
+        "BTC-USDT", "4h", start_time_ms=0, end_time_ms=9999, client=_cg()
+    )
     assert liq.get_bucket("BTC-USDT", 1000) is None
     assert oi.get_series("BTC-USDT", 9999, 5) == []
+    assert delta.get_cvd_series("BTC-USDT", 9999, 5) == []
