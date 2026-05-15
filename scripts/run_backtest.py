@@ -99,7 +99,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--strategy",
-        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
+        choices=[
+            "btc_breakout",
+            "us_session_breakout",
+            "trend_ema_4h",
+            "gold_safety_haven",
+            "oil_eia_avoid",
+            "stock_earnings_avoid",
+        ],
         default="btc_breakout",
         help="Какую стратегию прогонять",
     )
@@ -167,6 +174,74 @@ def main() -> None:
             return TrendEmaStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _trend_factory
+    elif args.strategy == "gold_safety_haven":
+        from strategies.gold_safety_haven import (
+            get_default_config as gold_get_default_config,
+        )
+        from strategies.gold_safety_haven.config import (
+            load_config as gold_load_config,
+        )
+
+        strategy_cfg = (
+            gold_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else gold_get_default_config()
+        )
+
+        def _gold_factory(cfg: Any) -> Strategy:
+            return BtcBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _gold_factory
+    elif args.strategy == "oil_eia_avoid":
+        from strategies.oil_eia_avoid import (
+            build_eia_news_calendar,
+        )
+        from strategies.oil_eia_avoid import (
+            get_default_config as oil_get_default_config,
+        )
+        from strategies.oil_eia_avoid.config import (
+            load_config as oil_load_config,
+        )
+
+        strategy_cfg = (
+            oil_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else oil_get_default_config()
+        )
+
+        def _oil_factory(cfg: Any) -> Strategy:
+            return BtcBreakoutStrategy(
+                config=cfg,
+                risk_engine=RiskEngine(),
+                news_calendar=build_eia_news_calendar(),
+            )
+
+        strategy_factory = _oil_factory
+    elif args.strategy == "stock_earnings_avoid":
+        from strategies.stock_earnings_avoid import (
+            build_earnings_blackout_calendar,
+        )
+        from strategies.stock_earnings_avoid import (
+            get_default_config as stock_get_default_config,
+        )
+        from strategies.stock_earnings_avoid.config import (
+            load_config as stock_load_config,
+        )
+
+        strategy_cfg = (
+            stock_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else stock_get_default_config()
+        )
+
+        def _stock_factory(cfg: Any) -> Strategy:
+            return BtcBreakoutStrategy(
+                config=cfg,
+                risk_engine=RiskEngine(),
+                news_calendar=build_earnings_blackout_calendar(cfg.symbol),
+            )
+
+        strategy_factory = _stock_factory
     else:  # btc_breakout
         strategy_cfg = (
             load_strategy_config(args.strategy_config)
