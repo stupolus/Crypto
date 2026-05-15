@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import argparse
 import glob
 import json
 import math
@@ -88,6 +89,9 @@ def _portfolio(rows: list[tuple[int, float, float]], n_sleeves: int) -> str:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description="Портфельный бэктест крипты")
+    ap.add_argument("--strategy", default="trend_ema_4h")
+    args = ap.parse_args()
     by_tag: dict[str, list[tuple[int, float, float]]] = {"is": [], "oos": []}
     sleeves: dict[str, set[str]] = {"is": set(), "oos": set()}
     for sym in _COINS:
@@ -104,7 +108,7 @@ def main() -> None:
                 "-m",
                 "scripts.run_backtest",
                 "--strategy",
-                "trend_ema_4h",
+                args.strategy,
                 "--symbol",
                 sym,
                 "--candles",
@@ -127,7 +131,7 @@ def main() -> None:
                 by_tag[tag].append((exit_ms, float(Decimal(str(tr["pnl"]))), base))
                 if tr["exits"]:
                     sleeves[tag].add(sym)
-    print("Равновесный крипто-портфель (trend_ema_4h, 24-мес, вес 1/N):")
+    print(f"Равновесный крипто-портфель ({args.strategy}, 24-мес, вес 1/N):")
     print(f"  IS : {_portfolio(by_tag['is'], len(sleeves['is']))}")
     print(f"  OOS: {_portfolio(by_tag['oos'], len(sleeves['oos']))}")
     print("Критерий приёмки (план 20): OOS PF>1.3 И Sharpe>0.8 И ≥30 сделок.")
