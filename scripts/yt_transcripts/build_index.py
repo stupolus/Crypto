@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Build INDEX.md for the transcript folder. Usage: build_index.py OUTDIR manifest.json"""
+"""Build INDEX.md for the transcript folder.
+
+Usage: build_index.py OUTDIR manifest.json
+"""
+
 import json
 import re
 import sys
 from pathlib import Path
 
 outdir = Path(sys.argv[1])
-manifest = {r["id"]: r for r in json.load(open(sys.argv[2]))}
-rows, present = [], {}
+raw_manifest = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+manifest = {r["id"]: r for r in raw_manifest}
+present = {}
 for p in sorted(outdir.glob("[0-9]*-*.md")):
     m = re.match(r"(\d+)-([A-Za-z0-9_-]+)\.md", p.name)
     if m:
@@ -30,7 +35,7 @@ for rec in sorted(manifest.values(), key=lambda r: r["n"]):
         _, fname = present[n]
         link = f"[{fname}]({fname})"
     else:
-        link = f"_нет ({rec.get('status','?')})_"
+        link = f"_нет ({rec.get('status', '?')})_"
     url = f"https://www.youtube.com/watch?v={rec['id']}"
     title = (rec.get("yt_title") or rec["title"]).replace("|", "\\|")
     lines.append(f"| {n} | {rec['kind']} | {link} | [{title}]({url}) |")

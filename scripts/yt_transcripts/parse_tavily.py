@@ -7,6 +7,7 @@ Each Tavily result's raw_content is the YouTube json3 caption payload
 (sometimes wrapped in a markdown code fence). We map it back to a video
 via the v=<id> param in the result URL.
 """
+
 import json
 import re
 import sys
@@ -60,22 +61,23 @@ def fmt_dur(sec):
 
 
 def main():
-    manifest = {r["id"]: r for r in json.load(open(sys.argv[1]))}
+    raw_manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    manifest = {r["id"]: r for r in raw_manifest}
     outdir = Path(sys.argv[2])
     outdir.mkdir(parents=True, exist_ok=True)
     done = []
     for tf in sys.argv[3:]:
-        data = json.load(open(tf))
+        data = json.loads(Path(tf).read_text(encoding="utf-8"))
         for res in data.get("results", []):
             vid = vid_from_url(res.get("url", ""))
             rec = manifest.get(vid)
             if not rec:
-                print(f"SKIP unmatched url {res.get('url','')[:80]}")
+                print(f"SKIP unmatched url {res.get('url', '')[:80]}")
                 continue
             try:
                 j = load_json3(res.get("raw_content", ""))
                 body, n_chars = to_text(j)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 print(f"FAIL parse {vid}: {e}")
                 continue
             if n_chars < 20:
@@ -90,13 +92,12 @@ def main():
                 f"**Источник:** {BASE_URL}{vid}\n"
                 f"**Тип:** {rec['kind']}\n"
                 f"**Длительность:** {fmt_dur(rec.get('duration'))}\n"
-                f"**Язык субтитров:** {rec.get('lang','?')} "
-                f"({rec.get('caption_source','?')})\n"
+                f"**Язык субтитров:** {rec.get('lang', '?')} "
+                f"({rec.get('caption_source', '?')})\n"
                 f"**Статус:** сырой транскрипт (auto-caption, без вычитки)\n\n"
                 f"---\n\n"
             )
-            (outdir / fname).write_text(header + body + "\n",
-                                        encoding="utf-8")
+            (outdir / fname).write_text(header + body + "\n", encoding="utf-8")
             done.append((n, vid, n_chars))
             print(f"WROTE {fname} ({n_chars} chars)")
     print(f"\nTotal written: {len(done)}")
