@@ -363,3 +363,57 @@ def test_multi_db_merge(tmp_path: Path) -> None:
     assert btc_win["trade_id"] == "win_1"
     xau_open = c.get("/api/trades/open_1").json()
     assert xau_open["trade_id"] == "open_1"
+
+
+def test_equity_snapshots_endpoint(tmp_path: Path) -> None:
+    """/api/equity_snapshots сливает llm-*-equity.jsonl, сортирует по времени."""
+    db = tmp_path / "outcomes.sqlite"
+    _seed_db(db, with_closed=False, with_open=False)
+
+    eq1 = tmp_path / "llm-BTC-equity.jsonl"
+    eq2 = tmp_path / "llm-XAUT-equity.jsonl"
+    eq1.write_text(
+        '{"timestamp_ms": 1700000002000, "equity": "1010.5"}\n'
+        '{"timestamp_ms": 1700000000000, "equity": "1000.0"}\n'
+        "garbage line — should be skipped\n",
+        encoding="utf-8",
+    )
+    eq2.write_text(
+        '{"timestamp_ms": 1700000001000, "equity": "500.0"}\n',
+        encoding="utf-8",
+    )
+
+    app = create_app(
+        outcomes_db=db,
+        halt_flag_file=None,
+        heartbeat_file=None,
+        equity_snapshot_files=[eq1, eq2],
+    )
+    c = TestClient(app)
+    points = c.get("/api/equity_snapshots").json()["points"]
+    # 3 валидные строки (битая пропущена), отсортированы по ts ASC
+    assert len(points) == 3
+    assert [p["timestamp_ms"] for p in points] == [
+        1700000000000,
+        1700000001000,
+        1700000002000,
+    ]
+    assert points[0]["equity"] == "1000.0"
+    assert points[1]["source"] == "llm-XAUT-equity.jsonl"
+
+
+def test_equity_snapshots_empty_when_no_files(tmp_path: Path) -> None:
+    db = tmp_path / "outcomes.sqlite"
+    _seed_db(db, with_closed=False, with_open=False)
+    app = create_app(outcomes_db=db, halt_flag_file=None, heartbeat_file=None)
+    c = TestClient(app)
+    assert c.get("/api/equity_snapshots").json()["points"] == []
+
+
+def test_equity_snapshots_limit_validation(tmp_path: Path) -> None:
+    db = tmp_path / "outcomes.sqlite"
+    _seed_db(db, with_closed=False, with_open=False)
+    app = create_app(outcomes_db=db, halt_flag_file=None, heartbeat_file=None)
+    c = TestClient(app)
+    assert c.get("/api/equity_snapshots?limit=0").status_code == 400
+    assert c.get("/api/equity_snapshots?limit=99999").status_code == 400

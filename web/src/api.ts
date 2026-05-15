@@ -80,6 +80,12 @@ export interface EquityPoint {
   trade_id: string;
 }
 
+export interface EquitySnapshot {
+  timestamp_ms: number;
+  equity: string;
+  source: string;
+}
+
 export interface NewsItem {
   title: string;
   link: string;
@@ -151,6 +157,8 @@ export const api = {
   trade: (id: string) => json<TradeDetail>(`/api/trades/${encodeURIComponent(id)}`),
   strategyStats: () => json<{ strategies: StrategyStat[] }>("/api/strategy_stats"),
   equity: (limit = 100) => json<{ points: EquityPoint[] }>(`/api/equity?limit=${limit}`),
+  equitySnapshots: (limit = 500) =>
+    json<{ points: EquitySnapshot[] }>(`/api/equity_snapshots?limit=${limit}`),
   news: (limit = 30) => json<{ items: NewsItem[] }>(`/api/news?limit=${limit}`),
   candles: (symbol = "BTC-USDT", interval = "15m", limit = 100) =>
     json<CandlesResponse>(
