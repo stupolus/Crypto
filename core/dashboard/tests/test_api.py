@@ -192,3 +192,33 @@ def test_empty_db(tmp_path: Path) -> None:
     agents = c.get("/api/agents").json()["agents"]
     assert len(agents) == 5
     assert all(a["last_payload"] == {} for a in agents)
+
+
+def test_multi_db_merge(tmp_path: Path) -> None:
+    """Multi-runner setup: outcomes_db = список DB → дашборд сливает все.
+
+    Каждый runner пишет в свою sqlite (llm-BTC-outcomes.sqlite,
+    llm-XAU-outcomes.sqlite, ...). Дашборд агрегирует.
+    """
+    db_btc = tmp_path / "llm-BTC-outcomes.sqlite"
+    db_xau = tmp_path / "llm-XAU-outcomes.sqlite"
+    _seed_db(db_btc, with_open=False)  # 2 closed (win + loss) в BTC
+    _seed_db(db_xau, with_closed=False)  # 1 open в XAU
+
+    app = create_app(
+        outcomes_db=[db_btc, db_xau],
+        halt_flag_file=None,
+        heartbeat_file=None,
+    )
+    c = TestClient(app)
+    status = c.get("/api/status").json()
+    # 2 closed + 1 open = 3 total
+    assert status["trades"]["total"] == 3
+    assert status["trades"]["closed"] == 2
+    assert status["trades"]["open"] == 1
+
+    # trade_detail умеет найти trade в любой из DB.
+    btc_win = c.get("/api/trades/win_1").json()
+    assert btc_win["trade_id"] == "win_1"
+    xau_open = c.get("/api/trades/open_1").json()
+    assert xau_open["trade_id"] == "open_1"
