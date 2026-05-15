@@ -114,6 +114,14 @@ S2/S3/S5 работают на 4h (HOBBYIST ОК). S1/S4 требуют 15m
   (STANDARD-тариф), как и в плане. 15 тестов синтетикой, 101 в
   core/signals без регресса, ruff/format/mypy strict чисто.
   ALL_DETECTORS=10. Каркас матрицы бэктеста (23.2) готов.
+- **2026-05-15 фаза 23.2 — изолированный харнес ГОТОВ.**
+  `core/signals/dolf_backtest.py`: evaluate_detector — форвардная
+  доходность сетапа на горизонте N баров, анти-look-ahead
+  (контекст [0..i], сделка close[i]→close[i+N]), DetectorStats
+  с .passes (PF>1.3 И Sharpe>0.8 И ≥30). 4 теста синтетикой,
+  105 в core/signals без регресса, ruff/mypy strict чисто.
+  Готово к прогону ALL_DETECTORS на 2-летней истории сразу
+  после апгрейда Coinglass — нужен лишь наполненный backfill.
 
 ## Журнал прогонов
 
