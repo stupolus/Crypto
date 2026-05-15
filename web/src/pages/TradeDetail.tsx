@@ -3,6 +3,7 @@ import { api } from "../api";
 import { usePolling, fmtTime, fmtDate, fmtNum, fmtPct } from "../hooks";
 import { Section } from "./Overview";
 import CandleChart from "../components/CandleChart";
+import AgentCard from "../components/AgentCard";
 
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
@@ -136,25 +137,17 @@ export default function TradeDetail() {
         </Section>
       )}
 
-      {/* LLM payloads */}
+      {/* Decision replay — что сказали 5 агентов */}
       <Section title="Signal Candidate">
         <Json data={data.signal_candidate} />
       </Section>
-      <Section title="📊 Market Analyst (Sonnet 4.6)">
-        <Json data={data.market_analyst} />
-      </Section>
-      <Section title="🌐 Sentiment Analyst (Haiku 4.5)">
-        <Json data={data.sentiment_analyst} />
-      </Section>
-      <Section title="🛡️ Risk Overseer (Opus 4.7)">
-        <Json data={data.risk_overseer} />
-      </Section>
-      <Section title="🌍 Macro Analyst (Sonnet 4.6)">
-        <Json data={data.macro_analyst} />
-      </Section>
-      <Section title="⚖️ Coordinator (Opus 4.7) — final decision">
-        <Json data={data.coordinator} />
-      </Section>
+      <div className="space-y-3">
+        <AgentCard agent="market_analyst" payload={data.market_analyst} />
+        <AgentCard agent="sentiment_analyst" payload={data.sentiment_analyst} />
+        <AgentCard agent="risk_overseer" payload={data.risk_overseer} />
+        <AgentCard agent="macro_analyst" payload={data.macro_analyst} />
+        <AgentCard agent="coordinator" payload={data.coordinator} />
+      </div>
     </div>
   );
 }
