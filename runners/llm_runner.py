@@ -637,7 +637,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BingX live runner с LLM Gate (Layer 3)")
     parser.add_argument(
         "--strategy",
-        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
+        choices=[
+            "btc_breakout",
+            "us_session_breakout",
+            "trend_ema_4h",
+            "gold_safety_haven",
+            "oil_eia_avoid",
+            "stock_earnings_avoid",
+        ],
         required=True,
     )
     parser.add_argument("--symbol", default="BTC-USDT")
