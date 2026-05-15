@@ -28,6 +28,7 @@ _STRATEGY_CHOICES = [
     "gold_safety_haven",
     "oil_eia_avoid",
     "stock_earnings_avoid",
+    "liquidation_reversal",
 ]
 
 
