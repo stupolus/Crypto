@@ -49,7 +49,14 @@ class StdoutAlerter:
 
     Подходит для dev/staging. На VPS логи pipe-ятся в файл/systemd
     journald, мониторинг видит критичные события через `journalctl`.
+
+    ``prefix`` — instance-tag (например, ``"[btc_breakout@BTC-USDT]"``),
+    добавляется к каждому сообщению. Полезно когда несколько runner'ов
+    пишут в один лог/чат.
     """
+
+    def __init__(self, prefix: str = "") -> None:
+        self._prefix = prefix
 
     async def send(self, severity: Severity, message: str) -> None:
         level = {
@@ -57,7 +64,8 @@ class StdoutAlerter:
             Severity.WARNING: logging.WARNING,
             Severity.CRITICAL: logging.CRITICAL,
         }[severity]
-        logger.log(level, "[ALERT] %s", message)
+        tagged = f"{self._prefix} {message}" if self._prefix else message
+        logger.log(level, "[ALERT] %s", tagged)
 
     async def send_info(self, message: str) -> None:
         await self.send(Severity.INFO, message)
@@ -116,11 +124,13 @@ class TelegramAlerter:
         chat_id: str | None = None,
         *,
         client: httpx.AsyncClient | None = None,
+        prefix: str = "",
     ) -> None:
         self._bot_token = bot_token
         self._chat_id = chat_id
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(timeout=_TELEGRAM_TIMEOUT_S)
+        self._prefix = prefix
         if not bot_token or not chat_id:
             logger.warning("TelegramAlerter created without bot_token/chat_id — operating as noop")
 
@@ -132,7 +142,8 @@ class TelegramAlerter:
         if not self._bot_token or not self._chat_id:
             return
         emoji = _SEVERITY_EMOJI[severity]
-        text = f"{emoji} [{severity.value}] {message}"
+        tagged = f"{self._prefix} {message}" if self._prefix else message
+        text = f"{emoji} [{severity.value}] {tagged}"
         url = f"{_TELEGRAM_BOT_API}/bot{self._bot_token}/sendMessage"
         payload = {"chat_id": self._chat_id, "text": text}
         try:
