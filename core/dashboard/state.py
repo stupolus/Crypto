@@ -133,6 +133,7 @@ class DashboardState:
         *,
         only_open: bool = False,
         only_closed: bool = False,
+        symbol: str | None = None,
         limit: int = 50,
     ) -> list[TradeSummary]:
         if only_open and only_closed:
@@ -144,10 +145,19 @@ class DashboardState:
                 continue
             if only_closed and not o.is_closed:
                 continue
+            if symbol is not None and o.symbol != symbol:
+                continue
             result.append(_trade_summary(o))
             if len(result) >= limit:
                 break
         return result
+
+    def symbols(self) -> list[str]:
+        """Уникальные symbol'ы из всех outcomes (для UI filter dropdown)."""
+        seen: set[str] = set()
+        for o in self._all_outcomes_desc():
+            seen.add(o.symbol)
+        return sorted(seen)
 
     def trade_detail(self, trade_id: str) -> dict[str, Any] | None:
         # Multi-DB: пробуем каждую базу, возвращаем первую найденную.

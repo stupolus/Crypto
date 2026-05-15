@@ -127,6 +127,7 @@ def create_app(
     def get_trades(
         only_open: bool = False,
         only_closed: bool = False,
+        symbol: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
         if limit < 1 or limit > 500:
@@ -134,9 +135,15 @@ def create_app(
         items = state.trades(
             only_open=only_open,
             only_closed=only_closed,
+            symbol=symbol,
             limit=limit,
         )
         return {"trades": summaries_to_dicts(items)}
+
+    @app.get("/api/symbols")
+    def get_symbols() -> dict[str, Any]:
+        """Список уникальных symbol'ов из всех outcomes — для UI dropdown."""
+        return {"symbols": state.symbols()}
 
     @app.get("/api/trades/{trade_id}")
     def get_trade(trade_id: str) -> dict[str, Any]:
