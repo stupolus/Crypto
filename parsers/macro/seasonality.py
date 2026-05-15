@@ -162,3 +162,31 @@ def market_regime(
     closes = [c for _, c in series]
     sma = sum(closes[-_REGIME_SMA_MONTHS:]) / _REGIME_SMA_MONTHS
     return MarketRegime.RISK_ON if closes[-1] >= sma else MarketRegime.RISK_OFF
+
+
+def regime_history(
+    index_symbol: str = "^GSPC",
+    *,
+    years: int = 10,
+    client: httpx.Client | None = None,
+    backoff: float = 2.0,
+) -> dict[tuple[int, int], MarketRegime]:
+    """{(год, месяц): RISK_ON/OFF} по trailing 10-мес SMA.
+
+    Look-ahead-safe: режим месяца M = close[M] vs SMA закрытий
+    месяцев (M-9..M) — только прошлое. Для гейта в бэктесте:
+    режим на момент входа берётся по (год, месяц) входа. Пусто
+    при блоке Yahoo → гейт no-op.
+    """
+    series = _fetch_monthly_closes(index_symbol, years=years, client=client, backoff=backoff)
+    if len(series) <= _REGIME_SMA_MONTHS:
+        return {}
+    out: dict[tuple[int, int], MarketRegime] = {}
+    for i in range(_REGIME_SMA_MONTHS - 1, len(series)):
+        window = [c for _, c in series[i - _REGIME_SMA_MONTHS + 1 : i + 1]]
+        sma = sum(window) / _REGIME_SMA_MONTHS
+        dt = datetime.fromtimestamp(series[i][0], tz=UTC)
+        out[(dt.year, dt.month)] = (
+            MarketRegime.RISK_ON if series[i][1] >= sma else MarketRegime.RISK_OFF
+        )
+    return out

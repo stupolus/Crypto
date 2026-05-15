@@ -13,6 +13,7 @@ from parsers.macro.seasonality import (
     compute_month_stats,
     market_regime,
     month_bias,
+    regime_history,
 )
 
 _CHART = "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
@@ -82,3 +83,19 @@ def test_market_regime_risk_on_off() -> None:
 def test_regime_unknown_when_blocked() -> None:
     respx.get(_IDX).mock(side_effect=httpx.ConnectError("boom"))
     assert market_regime("^GSPC", client=httpx.Client(), backoff=0.0) is MarketRegime.UNKNOWN
+
+
+@respx.mock
+def test_regime_history_lookahead_safe() -> None:
+    closes = [100.0 + i * 2 for i in range(12)] + [124.0 - i * 5 for i in range(12)]
+    respx.get(_IDX).mock(return_value=_monthly_response(closes, start_year=2015))
+    hist = regime_history("^GSPC", client=httpx.Client(), backoff=0.0)
+    assert hist
+    assert hist[(2015, 12)] is MarketRegime.RISK_ON
+    assert hist[(2016, 12)] is MarketRegime.RISK_OFF
+
+
+@respx.mock
+def test_regime_history_empty_when_blocked() -> None:
+    respx.get(_IDX).mock(return_value=httpx.Response(429, text="rate"))
+    assert regime_history("^GSPC", client=httpx.Client(), backoff=0.0) == {}
