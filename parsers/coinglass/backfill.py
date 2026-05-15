@@ -62,12 +62,23 @@ def _paginate(
     seen: dict[int, _T] = {}
     cursor = start_ms
     guard = 0
+    consecutive_empty = 0
     while cursor < end_ms and guard < 100:
         guard += 1
         win_end = min(cursor + window_ms, end_ms)
         rows = fetch(cursor, win_end)
         if not rows:
-            break
+            # Пусто может значить: окно вне разрешённого тарифом
+            # диапазона (HOBBYIST даёт только последние ~6 мес — старые
+            # окна → 400 → []) ЛИБО реально нет данных. Не останавливаемся
+            # сразу: перескакиваем вперёд, чтобы дойти до доступных
+            # окон. Стоп после нескольких подряд пустых ближе к end.
+            consecutive_empty += 1
+            if consecutive_empty > 5:
+                break
+            cursor += window_ms
+            continue
+        consecutive_empty = 0
         for r in rows:
             seen[ts_of(r)] = r
         max_ts = max(ts_of(r) for r in rows)
