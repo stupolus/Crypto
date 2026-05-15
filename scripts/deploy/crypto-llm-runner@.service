@@ -11,10 +11,18 @@ User=crypto
 Group=crypto
 WorkingDirectory=/opt/crypto
 EnvironmentFile=/etc/crypto/.env
+# STRATEGY можно переопределить per-instance через drop-in:
+#   /etc/systemd/system/crypto-llm-runner@XAU-USDT.service.d/override.conf
+#   [Service]
+#   Environment=STRATEGY=gold_safety_haven
+#   Environment=INTERVAL=1h
+# Default = btc_breakout 15m, backwards-compat с прежним поведением.
+Environment=STRATEGY=btc_breakout
+Environment=INTERVAL=15m
 ExecStart=/opt/crypto/.venv/bin/python -m runners.llm_runner \
-    --strategy btc_breakout \
+    --strategy ${STRATEGY} \
     --symbol %i \
-    --interval 15m \
+    --interval ${INTERVAL} \
     --warmup-candles 100 \
     --metrics-file /var/lib/crypto/llm-%i-metrics.jsonl \
     --journal-db /var/lib/crypto/llm-%i.sqlite \
