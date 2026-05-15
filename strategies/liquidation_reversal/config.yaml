@@ -2,7 +2,10 @@
 # Числа из бизнес/материалы/курсы/dmitry-shukin/, НЕ подгонять под бэктест.
 
 symbol: BTC-USDT
-timeframe: 15m
+# 4h — Coinglass HOBBYIST ($29) даёт liquidation history только
+# 4h/6h/8h/12h/1d/1w. 15m/1h требуют STANDARD. 4h валиден для
+# разворотной методологии (значимые экстремумы, swing-стиль Щукина).
+timeframe: 4h
 
 # «Значимый экстремум» — Donchian-50 (как gold: не локальный шум)
 level_n: 50

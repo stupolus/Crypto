@@ -260,10 +260,25 @@ def main() -> None:
             else liqrev_default_config()
         )
 
+        # Coinglass backfill: liquidation/OI/CVD за диапазон свечей.
+        # Без активного плана → пустые провайдеры → no-op (честно 0 сделок).
+        from parsers.coinglass.backfill import backfill_providers
+
+        _liq_p, _oi_p, _delta_p = backfill_providers(
+            strategy_cfg.symbol,
+            strategy_cfg.timeframe,
+            start_time_ms=candles[0].open_time_ms if candles else 0,
+            end_time_ms=candles[-1].open_time_ms if candles else 0,
+        )
+
         def _liqrev_factory(cfg: Any) -> Strategy:
-            # Бэктест без Coinglass-провайдеров → пустые Static → no-op.
-            # Реальный бэктест — фаза 21.4 с historical-провайдерами.
-            return LiquidationReversalStrategy(config=cfg, risk_engine=RiskEngine())
+            return LiquidationReversalStrategy(
+                config=cfg,
+                risk_engine=RiskEngine(),
+                liquidation_provider=_liq_p,
+                oi_provider=_oi_p,
+                delta_provider=_delta_p,
+            )
 
         strategy_factory = _liqrev_factory
     else:  # btc_breakout
