@@ -18,6 +18,9 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+DirectionBias = Literal["both", "long_only", "short_only"]
+
+
 class StrategyConfig(_StrictModel):
     symbol: str
     timeframe: Literal["15m", "1h", "4h"]
@@ -39,6 +42,11 @@ class StrategyConfig(_StrictModel):
     tp2_trailing_ema: int = Field(gt=0)
 
     risk_tier: RiskTier = RiskTier.B
+
+    # Направленный bias: для safe-haven assets (gold) — long_only, для shorts
+    # bias (например, structurally weakening token) — short_only.
+    # См. plans/19-asset-strategies.md §«Параметры (обоснование)».
+    direction_bias: DirectionBias = "both"
 
 
 class StrategyConfigError(Exception):

@@ -329,3 +329,46 @@ def test_protocol_compliance() -> None:
 
     strategy = _make_strategy()
     assert isinstance(strategy, Strategy)
+
+
+# ── direction_bias ────────────────────────────────────────────────────────
+
+
+def test_direction_bias_default_is_both() -> None:
+    cfg = _make_config()
+    assert cfg.direction_bias == "both"
+
+
+def test_direction_bias_long_only_blocks_short_signal() -> None:
+    """direction_bias='long_only' → SELL trigger игнорируется."""
+    strategy = BtcBreakoutStrategy(
+        config=_make_config(direction_bias="long_only"),
+        risk_engine=RiskEngine(),
+    )
+    history = _breakout_history()
+    # Breakdown вниз: close ниже Donchian-low.
+    history.append(_kline(30 * 60_000, "100", "100", "90", "90", volume="500"))
+    ctx = StrategyContext(
+        current_candle=history[-1],
+        history=tuple(history),
+        equity=Decimal("1000"),
+        open_position=None,
+    )
+    assert strategy.on_candle_close(ctx) is None
+
+
+def test_direction_bias_short_only_blocks_long_signal() -> None:
+    """direction_bias='short_only' → BUY trigger игнорируется."""
+    strategy = BtcBreakoutStrategy(
+        config=_make_config(direction_bias="short_only"),
+        risk_engine=RiskEngine(),
+    )
+    history = _breakout_history()
+    history.append(_kline(30 * 60_000, "100", "110", "100", "108", volume="500"))
+    ctx = StrategyContext(
+        current_candle=history[-1],
+        history=tuple(history),
+        equity=Decimal("1000"),
+        open_position=None,
+    )
+    assert strategy.on_candle_close(ctx) is None
