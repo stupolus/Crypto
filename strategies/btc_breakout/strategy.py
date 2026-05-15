@@ -128,6 +128,13 @@ class BtcBreakoutStrategy:
         upper, lower = donchian_channel(closed, self._cfg.donchian_n)
         long_trigger = candle.close > upper
         short_trigger = candle.close < lower
+
+        # Direction bias: для safe-haven (gold) — long_only, и т.п.
+        if self._cfg.direction_bias == "long_only":
+            short_trigger = False
+        elif self._cfg.direction_bias == "short_only":
+            long_trigger = False
+
         if not (long_trigger or short_trigger):
             return None
 
