@@ -5,6 +5,7 @@ Stateless движок. Inputs от стратегии → одно решени
 """
 
 from core.risk.config import RiskConfig, get_default_config, load_config
+from core.risk.correlation_gate import CorrelationDecision, check_correlation
 from core.risk.engine import RiskEngine
 from core.risk.models import (
     RejectionCode,
@@ -17,6 +18,7 @@ from core.risk.models import (
 )
 
 __all__ = [
+    "CorrelationDecision",
     "RejectionCode",
     "RiskApproval",
     "RiskConfig",
@@ -26,6 +28,7 @@ __all__ = [
     "RiskRejection",
     "RiskTier",
     "Side",
+    "check_correlation",
     "get_default_config",
     "load_config",
 ]

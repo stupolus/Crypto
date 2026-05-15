@@ -63,7 +63,7 @@ from core.postmortem import (
     TradeOutcomeLogger,
     summaries_to_prompt_text,
 )
-from core.risk import RiskEngine
+from core.risk import RiskEngine, check_correlation
 from core.safety import HaltFlag
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
@@ -308,6 +308,21 @@ async def _handle_closed_candle_with_llm(
     if args.dry_run:
         logger.warning("DRY-RUN: skipping place_order")
         return
+
+    # Correlation gate: max 1 открытая позиция на asset class.
+    # Runner'ы независимы — этот чек видит позиции ДРУГИХ runner'ов
+    # через общий BingX-аккаунт. Политика: разные группы — разные позиции.
+    try:
+        all_positions = await private_api.get_positions(symbol=None)
+        corr = check_correlation(approved.symbol, list(all_positions))
+        if not corr.allowed:
+            logger.info("correlation gate blocked %s: %s", approved.symbol, corr.reason)
+            await alerter.send_info(f"correlation gate skip: {corr.reason}")
+            return
+    except Exception as exc:
+        # Не валим runner если positions-запрос упал — лог + продолжаем.
+        # RiskEngine + strategy state machine остаются как защита.
+        logger.warning("correlation gate check failed (continuing): %s", exc)
 
     # Диагностический dump перед place_order. Помогает понять что именно
     # отправляем на BingX когда ответ — 101429 (position limit exceeded) или
