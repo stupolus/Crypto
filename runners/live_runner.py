@@ -143,6 +143,18 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
             risk_engine=risk_engine,
             news_calendar=build_earnings_blackout_calendar(cfg.symbol),
         )
+    if name == "liquidation_reversal":
+        from strategies.liquidation_reversal import (
+            LiquidationReversalStrategy,
+        )
+        from strategies.liquidation_reversal import (
+            get_default_config as liqrev_cfg,
+        )
+
+        # Провайдеры (Coinglass/CVD) подключаются в llm_runner когда
+        # есть ключ. Без них стратегия молчит (пустые Static-провайдеры) —
+        # безопасный no-op до фазы 21.3-live/21.4.
+        return LiquidationReversalStrategy(config=liqrev_cfg(), risk_engine=risk_engine)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -586,6 +598,7 @@ def main() -> None:
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
+            "liquidation_reversal",
         ],
         required=True,
     )

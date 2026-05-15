@@ -106,6 +106,7 @@ def main() -> None:
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
+            "liquidation_reversal",
         ],
         default="btc_breakout",
         help="Какую стратегию прогонять",
@@ -242,6 +243,29 @@ def main() -> None:
             )
 
         strategy_factory = _stock_factory
+    elif args.strategy == "liquidation_reversal":
+        from strategies.liquidation_reversal import (
+            LiquidationReversalStrategy,
+        )
+        from strategies.liquidation_reversal import (
+            get_default_config as liqrev_default_config,
+        )
+        from strategies.liquidation_reversal.config import (
+            load_config as liqrev_load_config,
+        )
+
+        strategy_cfg = (
+            liqrev_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else liqrev_default_config()
+        )
+
+        def _liqrev_factory(cfg: Any) -> Strategy:
+            # Бэктест без Coinglass-провайдеров → пустые Static → no-op.
+            # Реальный бэктест — фаза 21.4 с historical-провайдерами.
+            return LiquidationReversalStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _liqrev_factory
     else:  # btc_breakout
         strategy_cfg = (
             load_strategy_config(args.strategy_config)

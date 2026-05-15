@@ -699,6 +699,7 @@ def main() -> None:
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
+            "liquidation_reversal",
         ],
         required=True,
     )
