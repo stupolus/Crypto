@@ -39,6 +39,10 @@ from core.signals.liquidation_sweep import (
     LiquidationSweepSignal,
     detect_liquidation_sweep,
 )
+from core.signals.live_providers import (
+    RollingOpenInterestProvider,
+    poll_open_interest,
+)
 from core.signals.open_interest import (
     OIState,
     OpenInterestConfig,
@@ -76,6 +80,7 @@ __all__ = [
     "OpenInterestSignal",
     "OrderFlowConfig",
     "OrderFlowSignal",
+    "RollingOpenInterestProvider",
     "SetBlacklist",
     "StaticDeltaProvider",
     "StaticFundingProvider",
@@ -94,6 +99,7 @@ __all__ = [
     "ema",
     "is_in_window",
     "percentile_rank",
+    "poll_open_interest",
     "sma",
     "true_range",
     "utc_day_of_epoch",
