@@ -577,7 +577,7 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)
 
-        alerter = _build_alerter()
+        alerter = _build_alerter(prefix=f"[llm@{args.strategy}@{args.symbol}]")
         await alerter.send_info(
             f"llm-runner starting: strategy={args.strategy} symbol={args.symbol}"
         )

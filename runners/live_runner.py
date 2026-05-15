@@ -211,7 +211,7 @@ class _KlineCloseDetector:
         return closed
 
 
-def _build_alerter() -> Alerter:
+def _build_alerter(prefix: str = "") -> Alerter:
     """Выбрать alerter: Telegram (если в .env есть оба ключа) или Stdout.
 
     Источник: ``core.alerts.settings.TelegramSettings`` — pydantic-settings
@@ -219,6 +219,10 @@ def _build_alerter() -> Alerter:
 
     Если оба заданы — TelegramAlerter, иначе StdoutAlerter.
     Stdout всегда работает (логи + journald на VPS).
+
+    ``prefix`` — instance-tag для multi-runner setup (например,
+    ``"[gold_safety_haven@XAU-USDT]"``). Полезно когда несколько runner'ов
+    шлют в один Telegram chat — без тега не понятно «откуда» алерт.
     """
     from core.alerts.settings import TelegramSettings
 
@@ -227,9 +231,13 @@ def _build_alerter() -> Alerter:
         # Тип-нарратор для mypy: configured=True означает оба не None.
         assert settings.chat_id is not None
         logger.info("Alerter: Telegram (chat=%s)", settings.chat_id[:4] + "...")
-        return TelegramAlerter(bot_token=settings.bot_token, chat_id=settings.chat_id)
+        return TelegramAlerter(
+            bot_token=settings.bot_token,
+            chat_id=settings.chat_id,
+            prefix=prefix,
+        )
     logger.info("Alerter: Stdout (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env)")
-    return StdoutAlerter()
+    return StdoutAlerter(prefix=prefix)
 
 
 async def _warm_history(
@@ -287,7 +295,7 @@ async def run(args: argparse.Namespace) -> None:
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)
 
-        alerter = _build_alerter()
+        alerter = _build_alerter(prefix=f"[{args.strategy}@{args.symbol}]")
         await alerter.send_info(f"runner starting: strategy={args.strategy} symbol={args.symbol}")
 
         async with BingXUserDataStream(private_api) as user_stream:

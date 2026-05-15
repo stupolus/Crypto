@@ -142,3 +142,48 @@ async def test_telegram_alerter_noop_when_no_credentials() -> None:
             alerter = TelegramAlerter(bot_token=None, chat_id="42", client=client)
             await alerter.send_critical("ignored")
         assert not route.called
+
+
+@pytest.mark.asyncio
+async def test_stdout_alerter_includes_prefix(caplog: pytest.LogCaptureFixture) -> None:
+    """StdoutAlerter с prefix='[X@Y]' должен добавлять его перед сообщением."""
+    alerter = StdoutAlerter(prefix="[gold@XAU-USDT]")
+    with caplog.at_level(logging.WARNING):
+        await alerter.send_warning("place_order failed")
+    assert any(
+        "[gold@XAU-USDT]" in r.message and "place_order failed" in r.message for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_stdout_alerter_no_prefix_when_empty(caplog: pytest.LogCaptureFixture) -> None:
+    """Без prefix сообщение идёт без custom-tag, только дефолтный ALERT."""
+    alerter = StdoutAlerter()
+    with caplog.at_level(logging.INFO):
+        await alerter.send_info("starting")
+    msg = next(r.message for r in caplog.records if "starting" in r.message)
+    assert msg == "[ALERT] starting"
+
+
+@pytest.mark.asyncio
+async def test_telegram_alerter_includes_prefix() -> None:
+    """TelegramAlerter с prefix вставляет его в payload text."""
+    import httpx
+    import respx
+
+    with respx.mock(base_url="https://api.telegram.org") as mock:
+        route = mock.post("/botTOKEN/sendMessage").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        async with httpx.AsyncClient() as client:
+            alerter = TelegramAlerter(
+                bot_token="TOKEN",
+                chat_id="42",
+                client=client,
+                prefix="[llm@gold@XAU-USDT]",
+            )
+            await alerter.send_warning("place_order failed")
+    assert route.called
+    sent_payload = route.calls[0].request.read().decode()
+    assert "[llm@gold@XAU-USDT]" in sent_payload
+    assert "place_order failed" in sent_payload
