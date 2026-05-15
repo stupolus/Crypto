@@ -16,6 +16,7 @@ Requires:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -103,7 +104,19 @@ def fetch_audio(lid: str) -> str | None:
             wait_until="domcontentloaded",
             timeout=60000,
         )
-        pg.wait_for_timeout(12000)
+        pg.wait_for_timeout(6000)
+        # The GetCourse/Kinescope player only requests the HLS master
+        # after the play button is engaged. Click into the sign-player
+        # iframe to start it, then wait for the master request.
+        for _ in range(4):
+            if got["u"]:
+                break
+            for fr in pg.frames:
+                if "sign-player" in (fr.url or ""):
+                    with contextlib.suppress(Exception):
+                        fr.locator("body").first.click(timeout=4000)
+                    break
+            pg.wait_for_timeout(9000)
         if not got["u"]:
             ctx.close()
             b.close()
