@@ -1,9 +1,12 @@
-# StockEarningsAvoid — TSLA-USDT (или NVDA-USDT), 15m, both-sided
+# StockEarningsAvoid — NCSKTSLA2USD-USDT (Tesla perp на BingX VST), 15m, both-sided
 # Параметры обоснованы в plans/19-asset-strategies.md §«Stock».
 # Session window — через core/assets registry (stock_perp:us_market_hours).
 # Earnings blackout — через DI calendar (см. calendar.py).
+#
+# Symbol: BingX VST использует NCSK<TICKER>2USD-USDT для stock-perp.
+# Старое TSLA-USDT не существует.
 
-symbol: TSLA-USDT
+symbol: NCSKTSLA2USD-USDT
 timeframe: 15m
 
 # Donchian — узкий, US-session-relevant (~4 часа на 15m)

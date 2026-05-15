@@ -4,36 +4,48 @@
 `crypto-llm-runner@.service`. Override меняет переменные `STRATEGY` и
 `INTERVAL` для конкретной instance.
 
+## ⚠ Symbol mapping (BingX VST реальные имена)
+
+| Asset | Strategy | BingX VST symbol |
+|-------|----------|------------------|
+| Gold | gold_safety_haven | **XAUT-USDT** (Tether Gold) |
+| Oil WTI | oil_eia_avoid | **NCCO1OILWTI2USD-USDT** |
+| Tesla | stock_earnings_avoid | **NCSKTSLA2USD-USDT** |
+| NVIDIA | stock_earnings_avoid | **NCSKNVDA2USD-USDT** |
+
+Старые имена (`XAU-USDT`, `CL-USDT`, `TSLA-USDT`) на BingX VST не существуют —
+runner упадёт с error `109425 ... not exist`.
+
 ## Установка одной стратегии (на VPS)
 
-Пример для Gold (XAU-USDT, gold_safety_haven, 1h):
+Пример для Gold:
 
 ```bash
 # 1. Скопировать override
-sudo mkdir -p /etc/systemd/system/crypto-llm-runner@XAU-USDT.service.d/
-sudo cp /opt/crypto/scripts/deploy/runner-overrides/XAU-USDT.conf \
-    /etc/systemd/system/crypto-llm-runner@XAU-USDT.service.d/override.conf
+sudo mkdir -p /etc/systemd/system/crypto-llm-runner@XAUT-USDT.service.d/
+sudo cp /opt/crypto/scripts/deploy/runner-overrides/XAUT-USDT.conf \
+    /etc/systemd/system/crypto-llm-runner@XAUT-USDT.service.d/override.conf
 
 # 2. Reload + enable + start
 sudo systemctl daemon-reload
-sudo systemctl enable --now crypto-llm-runner@XAU-USDT.service
+sudo systemctl enable --now crypto-llm-runner@XAUT-USDT.service
 
 # 3. Логи
-journalctl -u crypto-llm-runner@XAU-USDT -f
+journalctl -u crypto-llm-runner@XAUT-USDT -f
 ```
 
 ## Установка всех 3 новых стратегий разом
 
 ```bash
-for sym in XAU-USDT CL-USDT TSLA-USDT; do
+for sym in XAUT-USDT NCCO1OILWTI2USD-USDT NCSKTSLA2USD-USDT; do
   sudo mkdir -p /etc/systemd/system/crypto-llm-runner@${sym}.service.d/
   sudo cp /opt/crypto/scripts/deploy/runner-overrides/${sym}.conf \
       /etc/systemd/system/crypto-llm-runner@${sym}.service.d/override.conf
 done
 sudo systemctl daemon-reload
-sudo systemctl enable --now crypto-llm-runner@XAU-USDT.service
-sudo systemctl enable --now crypto-llm-runner@CL-USDT.service
-sudo systemctl enable --now crypto-llm-runner@TSLA-USDT.service
+sudo systemctl enable --now crypto-llm-runner@XAUT-USDT.service
+sudo systemctl enable --now crypto-llm-runner@NCCO1OILWTI2USD-USDT.service
+sudo systemctl enable --now crypto-llm-runner@NCSKTSLA2USD-USDT.service
 ```
 
 ## Backwards-compat
@@ -54,7 +66,23 @@ sudo systemctl enable --now crypto-llm-runner@TSLA-USDT.service
 ## Каскадный stop
 
 ```bash
-sudo systemctl stop crypto-llm-runner@XAU-USDT crypto-llm-runner@CL-USDT crypto-llm-runner@TSLA-USDT
+sudo systemctl stop \
+    crypto-llm-runner@XAUT-USDT \
+    crypto-llm-runner@NCCO1OILWTI2USD-USDT \
+    crypto-llm-runner@NCSKTSLA2USD-USDT
+```
+
+## Удаление старых упавших instance (с неверными именами)
+
+Если уже создал `@XAU-USDT.service.d/`, `@CL-USDT.service.d/`,
+`@TSLA-USDT.service.d/` — почисти:
+
+```bash
+for old in XAU-USDT CL-USDT TSLA-USDT; do
+  sudo systemctl disable --now crypto-llm-runner@${old}.service 2>/dev/null
+  sudo rm -rf /etc/systemd/system/crypto-llm-runner@${old}.service.d/
+done
+sudo systemctl daemon-reload
 ```
 
 ## Emergency halt всех instance

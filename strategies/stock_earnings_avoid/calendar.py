@@ -24,16 +24,27 @@ from core.signals import NewsCalendar, StaticNewsCalendar
 # TSLA: после-close = ~20:00 UTC (16:00 EST на DST).
 # NVDA: аналогично.
 DEFAULT_UPCOMING_EARNINGS: dict[str, tuple[str, ...]] = {
-    "TSLA-USDT": (
+    # BingX VST symbols. Старые имена (TSLA-USDT) оставлены ниже
+    # для backwards-compat / unit-tests.
+    "NCSKTSLA2USD-USDT": (
         # Q2 2026 results, expected late July
         "2026-07-23",
         # Q3 2026 results, expected late October
         "2026-10-22",
     ),
-    "NVDA-USDT": (
+    "NCSKNVDA2USD-USDT": (
         # Q1 FY2027 results, expected late May
         "2026-05-28",
         # Q2 FY2027, expected late August
+        "2026-08-27",
+    ),
+    # Backwards-compat aliases (тесты используют короткие имена)
+    "TSLA-USDT": (
+        "2026-07-23",
+        "2026-10-22",
+    ),
+    "NVDA-USDT": (
+        "2026-05-28",
         "2026-08-27",
     ),
 }

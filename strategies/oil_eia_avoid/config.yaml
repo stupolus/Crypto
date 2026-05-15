@@ -1,8 +1,11 @@
-# OilEiaAvoid — CL-USDT (WTI crude), 15m, both-sided
+# OilEiaAvoid — NCCO1OILWTI2USD-USDT (WTI crude perp на BingX VST), 15m, both-sided
 # Параметры обоснованы в plans/19-asset-strategies.md §«Oil».
 # Blackout вокруг EIA Petroleum Status — через DI календарь (см. calendar.py).
+#
+# Symbol: BingX VST использует NCCO<N>OIL<TYPE>2USD-USDT формат для
+# RWA-перпов. NCCO1OILWTI2USD = WTI crude. Старое CL-USDT не существует.
 
-symbol: CL-USDT
+symbol: NCCO1OILWTI2USD-USDT
 timeframe: 15m
 
 # Donchian — как BTC, oil intraday вол OK

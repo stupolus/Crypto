@@ -41,6 +41,18 @@ def test_default_registry_includes_tesla() -> None:
     assert cfg.max_leverage == 3
 
 
+def test_default_registry_includes_bingx_vst_symbols() -> None:
+    """BingX VST реальные имена должны резолвиться через DEFAULT_REGISTRY.
+
+    После 2026-05-15 обнаружили что XAU/CL/TSLA-USDT не существуют на VST,
+    реальные имена — XAUT-USDT / NCCO1OILWTI2USD-USDT / NCSKTSLA2USD-USDT.
+    """
+    assert DEFAULT_REGISTRY.get("XAUT-USDT").asset_class == AssetClass.COMMODITY
+    assert DEFAULT_REGISTRY.get("NCCO1OILWTI2USD-USDT").asset_class == AssetClass.ENERGY
+    assert DEFAULT_REGISTRY.get("NCSKTSLA2USD-USDT").asset_class == AssetClass.STOCK_PERP
+    assert DEFAULT_REGISTRY.get("NCSKNVDA2USD-USDT").asset_class == AssetClass.STOCK_PERP
+
+
 def test_unknown_symbol_raises() -> None:
     with pytest.raises(UnknownAssetError, match="Unknown symbol"):
         DEFAULT_REGISTRY.get("ZZZ-USDT")

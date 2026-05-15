@@ -161,7 +161,9 @@ def _build_default_registry() -> AssetRegistry:
                 max_leverage=3,
                 volatility_profile="normal",
                 min_notional_usdt=Decimal("10"),
-                base_symbols=("XAU", "XAG"),  # gold, silver
+                # BingX VST: реальные имена. XAUT (Tether Gold) для золота.
+                # XAU/XAG/NCCOGOLD2USD оставлены для backwards-compat в коде.
+                base_symbols=("XAUT", "XAU", "XAG", "NCCOGOLD2USD"),
             ),
             "energy": AssetConfig(
                 asset_class=AssetClass.ENERGY,
@@ -169,7 +171,8 @@ def _build_default_registry() -> AssetRegistry:
                 max_leverage=3,
                 volatility_profile="high",  # EIA inventory swings
                 min_notional_usdt=Decimal("10"),
-                base_symbols=("CL", "BZ", "NG"),  # WTI, Brent, natural gas
+                # BingX VST: NCCO1OILWTI2USD (WTI). CL/BZ/NG — alias backward-compat.
+                base_symbols=("NCCO1OILWTI2USD", "NCCO7241OILWTI2USD", "CL", "BZ", "NG"),
             ),
             "stock_perp": AssetConfig(
                 asset_class=AssetClass.STOCK_PERP,
@@ -177,7 +180,17 @@ def _build_default_registry() -> AssetRegistry:
                 max_leverage=3,  # overnight gap risk → ниже cap
                 volatility_profile="normal",
                 min_notional_usdt=Decimal("10"),
-                base_symbols=("TSLA", "NVDA", "AAPL", "AMZN", "GOOG", "META"),
+                # BingX VST формат: NCSK<TICKER>2USD. TSLA/NVDA/... — alias.
+                base_symbols=(
+                    "NCSKTSLA2USD",
+                    "NCSKNVDA2USD",
+                    "TSLA",
+                    "NVDA",
+                    "AAPL",
+                    "AMZN",
+                    "GOOG",
+                    "META",
+                ),
             ),
         }
     )

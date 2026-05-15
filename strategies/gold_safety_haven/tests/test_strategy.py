@@ -62,7 +62,7 @@ def _breakdown_history() -> list[Kline]:
 
 def test_default_config_loads_with_gold_params() -> None:
     cfg = get_default_config()
-    assert cfg.symbol == "XAU-USDT"
+    assert cfg.symbol == "XAUT-USDT"
     assert cfg.timeframe == "1h"
     assert cfg.direction_bias == "long_only"
     assert cfg.donchian_n == 50
