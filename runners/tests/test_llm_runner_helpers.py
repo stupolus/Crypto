@@ -174,3 +174,32 @@ def test_build_decision_context_market_order_uses_candle_close() -> None:
         candle=_make_candle(close="80600"),
     )
     assert ctx.entry_price == Decimal("80600")
+
+
+def test_equity_snapshot_loop_writes_jsonl(tmp_path: object) -> None:
+    """_equity_snapshot_loop пишет {timestamp_ms, equity} и завершается по stop_event."""
+    import asyncio
+    import json
+    from pathlib import Path
+    from unittest.mock import AsyncMock
+
+    from runners.llm_runner import _equity_snapshot_loop
+
+    snap = Path(tmp_path) / "equity.jsonl"  # type: ignore[arg-type]
+    fake_api = AsyncMock()
+    fake_api.get_balance.return_value = []  # _fetch_equity → Decimal("0")
+
+    async def _run() -> None:
+        stop = asyncio.Event()
+        task = asyncio.create_task(_equity_snapshot_loop(snap, fake_api, stop, interval_s=0.05))
+        await asyncio.sleep(0.12)  # ~2 итерации
+        stop.set()
+        await asyncio.wait_for(task, timeout=1.0)
+
+    asyncio.run(_run())
+    assert snap.exists()
+    lines = [ln for ln in snap.read_text().splitlines() if ln.strip()]
+    assert len(lines) >= 1
+    rec = json.loads(lines[0])
+    assert "timestamp_ms" in rec
+    assert "equity" in rec

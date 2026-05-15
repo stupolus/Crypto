@@ -63,7 +63,7 @@ from core.postmortem import (
     TradeOutcomeLogger,
     summaries_to_prompt_text,
 )
-from core.risk import RiskEngine
+from core.risk import RiskEngine, check_correlation
 from core.safety import HaltFlag
 from parsers.macro.context_builder import MacroContextBuilder
 from parsers.macro.factory import FREDFactoryError, build_fred_adapter_from_env
@@ -309,6 +309,21 @@ async def _handle_closed_candle_with_llm(
         logger.warning("DRY-RUN: skipping place_order")
         return
 
+    # Correlation gate: max 1 открытая позиция на asset class.
+    # Runner'ы независимы — этот чек видит позиции ДРУГИХ runner'ов
+    # через общий BingX-аккаунт. Политика: разные группы — разные позиции.
+    try:
+        all_positions = await private_api.get_positions(symbol=None)
+        corr = check_correlation(approved.symbol, list(all_positions))
+        if not corr.allowed:
+            logger.info("correlation gate blocked %s: %s", approved.symbol, corr.reason)
+            await alerter.send_info(f"correlation gate skip: {corr.reason}")
+            return
+    except Exception as exc:
+        # Не валим runner если positions-запрос упал — лог + продолжаем.
+        # RiskEngine + strategy state machine остаются как защита.
+        logger.warning("correlation gate check failed (continuing): %s", exc)
+
     # Диагностический dump перед place_order. Помогает понять что именно
     # отправляем на BingX когда ответ — 101429 (position limit exceeded) или
     # 101400 (SL wrong side). Видно qty/SL/TP/entry в одной строке.
@@ -413,6 +428,36 @@ async def _user_events_loop_with_tracker(
                 )
         except Exception:
             logger.exception("exit_tracker / record_exit failed for event %r", event)
+
+
+async def _equity_snapshot_loop(
+    snapshot_path: Path,
+    private_api: PrivateAPI,
+    stop_event: asyncio.Event,
+    interval_s: float = 300.0,
+) -> None:
+    """Периодически пишет {timestamp_ms, equity} в jsonl.
+
+    Даёт настоящую equity-curve в дашборде (vs текущая реконструкция
+    из closed-trade PnL, которая игнорирует unrealized P&L и депозиты).
+
+    Best-effort: ошибки сети/диска логируются, не валят runner.
+    """
+    import json as _json
+
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    while not stop_event.is_set():
+        try:
+            equity = await _fetch_equity(private_api)
+            line = _json.dumps({"timestamp_ms": int(time.time() * 1000), "equity": str(equity)})
+            with snapshot_path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception as e:
+            logger.warning("equity snapshot failed: %s", e)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
+        except TimeoutError:
+            continue
 
 
 async def _candle_loop_llm(
@@ -600,6 +645,12 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     _heartbeat_loop(Path(args.heartbeat_file), stop_event),
                     name="llm-heartbeat",
                 )
+            equity_task: asyncio.Task[None] | None = None
+            if args.equity_snapshot_file:
+                equity_task = asyncio.create_task(
+                    _equity_snapshot_loop(Path(args.equity_snapshot_file), private_api, stop_event),
+                    name="llm-equity-snapshot",
+                )
 
             try:
                 await _candle_loop_llm(
@@ -626,6 +677,10 @@ async def _run_with_team(args: argparse.Namespace, team: AgentTeam) -> None:
                     heartbeat_task.cancel()
                     with suppress(asyncio.CancelledError):
                         await heartbeat_task
+                if equity_task is not None:
+                    equity_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await equity_task
                 await alerter.send_info(
                     f"llm-runner stopped: strategy={args.strategy} symbol={args.symbol}"
                 )
@@ -669,6 +724,12 @@ def main() -> None:
         "Пустая строка отключает проверку.",
     )
     parser.add_argument("--heartbeat-file", default=None)
+    parser.add_argument(
+        "--equity-snapshot-file",
+        default=None,
+        help="Если задан — каждые 5 мин пишем {ts_ms, equity} jsonl. "
+        "Дашборд строит настоящую equity-curve вместо реконструкции из PnL.",
+    )
     parser.add_argument(
         "--max-leverage",
         type=int,
