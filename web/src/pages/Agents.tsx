@@ -124,6 +124,8 @@ function AgentCard({ agent }: { agent: AgentSnapshot }) {
               </div>
             )}
 
+            <ConfidenceHistory agentName={agent.name} />
+
             <div className="flex justify-between text-xs font-mono text-text-muted pt-2 border-t border-border">
               <Link
                 to={`/trades/${agent.last_trade_id}`}
@@ -139,6 +141,49 @@ function AgentCard({ agent }: { agent: AgentSnapshot }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ConfidenceHistory({ agentName }: { agentName: string }) {
+  const { data } = usePolling(() => api.agentHistory(agentName, 30), 20000, [agentName]);
+  if (!data || data.points.length < 2) return null;
+  // DESC time → ASC для отрисовки слева-направо
+  const values = [...data.points].reverse().map((p) => p.value);
+  return (
+    <div>
+      <div className="flex justify-between text-xs font-mono text-text-muted mb-1">
+        <span className="uppercase">History (last {values.length})</span>
+        <span>0..1</span>
+      </div>
+      <MicroSparkline values={values} height={36} />
+    </div>
+  );
+}
+
+function MicroSparkline({ values, height = 32 }: { values: number[]; height?: number }) {
+  const w = 280;
+  const h = height;
+  const pad = 2;
+  const min = 0;
+  const max = 1;
+  const xs = values.map((_, i) => pad + (i * (w - pad * 2)) / Math.max(1, values.length - 1));
+  const ys = values.map((v) => h - pad - ((v - min) / (max - min)) * (h - pad * 2));
+  const path = xs.map((x, i) => `${i === 0 ? "M" : "L"}${x},${ys[i]}`).join(" ");
+  const last = values[values.length - 1];
+  const stroke = last >= 0.7 ? "#00ff88" : last >= 0.5 ? "#d4af37" : "#ff4d4d";
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full">
+      <line
+        x1={pad}
+        y1={h / 2}
+        x2={w - pad}
+        y2={h / 2}
+        stroke="#21262d"
+        strokeDasharray="2,3"
+      />
+      <path d={path} fill="none" stroke={stroke} strokeWidth="1.5" />
+      <circle cx={xs[xs.length - 1]} cy={ys[ys.length - 1]} r="2" fill={stroke} />
+    </svg>
   );
 }
 

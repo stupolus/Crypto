@@ -100,6 +100,27 @@ def create_app(
     def get_agents() -> dict[str, Any]:
         return {"agents": agents_to_dicts(state.agent_snapshots())}
 
+    @app.get("/api/agents/{agent_name}/history")
+    def get_agent_history(agent_name: str, limit: int = 30) -> dict[str, Any]:
+        allowed = {
+            "market_analyst",
+            "sentiment_analyst",
+            "risk_overseer",
+            "macro_analyst",
+            "coordinator",
+        }
+        if agent_name not in allowed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unknown agent {agent_name!r}, expected one of {sorted(allowed)}",
+            )
+        if limit < 1 or limit > 100:
+            raise HTTPException(status_code=400, detail="limit must be in [1, 100]")
+        return {
+            "agent": agent_name,
+            "points": state.agent_confidence_history(agent_name, limit=limit),
+        }
+
     @app.get("/api/trades")
     def get_trades(
         only_open: bool = False,

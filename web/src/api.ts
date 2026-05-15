@@ -133,4 +133,9 @@ export const api = {
     json<CandlesResponse>(
       `/api/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`,
     ),
+  agentHistory: (name: string, limit = 30) =>
+    json<{
+      agent: string;
+      points: Array<{ trade_id: string; timestamp_ms: number; value: number }>;
+    }>(`/api/agents/${encodeURIComponent(name)}/history?limit=${limit}`),
 };
