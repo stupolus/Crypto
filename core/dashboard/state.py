@@ -74,12 +74,22 @@ class DashboardState:
     def __init__(
         self,
         *,
-        outcomes_db: Path | str,
+        outcomes_db: Path | str | list[Path | str],
         halt_flag_file: Path | str | None = None,
         heartbeat_file: Path | str | None = None,
         runner_start_ts: float | None = None,
     ) -> None:
-        self._outcomes_db = Path(outcomes_db)
+        # Accept либо одиночный путь, либо список путей. Список — для
+        # multi-runner setup (отдельный outcomes-db per strategy).
+        # Глоб типа "/var/lib/crypto/llm-*-outcomes.sqlite" разворачивается
+        # вызывающим (server.py через CRYPTO_OUTCOMES_DBS env var).
+        if isinstance(outcomes_db, list):
+            self._outcomes_dbs = [Path(p) for p in outcomes_db]
+        else:
+            self._outcomes_dbs = [Path(outcomes_db)]
+        # Backwards-compat поле для legacy кода (не используется внутри,
+        # но тесты иногда читают).
+        self._outcomes_db = self._outcomes_dbs[0]
         self._halt_flag_file = Path(halt_flag_file) if halt_flag_file else None
         self._heartbeat_file = Path(heartbeat_file) if heartbeat_file else None
         self._start_ts = runner_start_ts or time.time()
@@ -140,11 +150,15 @@ class DashboardState:
         return result
 
     def trade_detail(self, trade_id: str) -> dict[str, Any] | None:
-        log = self._open_logger()
-        outcome = log.get_by_id(trade_id)
-        if outcome is None:
-            return None
-        return _serialize_outcome_full(outcome)
+        # Multi-DB: пробуем каждую базу, возвращаем первую найденную.
+        for db in self._outcomes_dbs:
+            if not db.exists():
+                continue
+            log = TradeOutcomeLogger(db)
+            outcome = log.get_by_id(trade_id)
+            if outcome is not None:
+                return _serialize_outcome_full(outcome)
+        return None
 
     def equity_curve(self, *, limit: int = 100) -> list[dict[str, Any]]:
         """Equity точки из закрытых сделок (running PnL cumulative).
@@ -250,14 +264,19 @@ class DashboardState:
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _open_logger(self) -> TradeOutcomeLogger:
-        # Connection per-call → стандартный паттерн TradeOutcomeLogger
-        return TradeOutcomeLogger(self._outcomes_db)
+        # Backwards-compat: legacy single-DB code path.
+        # Connection per-call → стандартный паттерн TradeOutcomeLogger.
+        return TradeOutcomeLogger(self._outcomes_dbs[0])
 
     def _all_outcomes_desc(self) -> list[TradeOutcome]:
-        if not self._outcomes_db.exists():
-            return []
-        log = self._open_logger()
-        return sorted(log.iter_all(), key=lambda o: o.entry_time_ms, reverse=True)
+        """Merge outcomes из всех баз, отсортированно по entry_time DESC."""
+        outcomes: list[TradeOutcome] = []
+        for db in self._outcomes_dbs:
+            if not db.exists():
+                continue
+            log = TradeOutcomeLogger(db)
+            outcomes.extend(log.iter_all())
+        return sorted(outcomes, key=lambda o: o.entry_time_ms, reverse=True)
 
 
 # ── Module helpers ──────────────────────────────────────────────────────────

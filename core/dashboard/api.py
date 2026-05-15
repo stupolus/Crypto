@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 def create_app(
     *,
-    outcomes_db: Path | str = "/var/lib/crypto/llm-outcomes.sqlite",
+    outcomes_db: Path | str | list[Path | str] = "/var/lib/crypto/llm-outcomes.sqlite",
     halt_flag_file: Path | str | None = "/var/lib/crypto/halt",
     heartbeat_file: Path | str | None = "/var/lib/crypto/llm-runner.heartbeat",
     cors_origins: list[str] | None = None,
