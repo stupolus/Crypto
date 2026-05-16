@@ -27,7 +27,15 @@ from core.signals.dolf_setups import DolfContext, detect_l3_oi_drop_flat_price
 from parsers.coinglass.backfill import backfill_providers, map_symbol
 from parsers.coinglass.client import CoinglassClient
 
-_SYMS = {"BTC-USDT": "BTC-USD", "ETH-USDT": "ETH-USD", "SOL-USDT": "SOL-USD"}
+# Расширенный юниверс — ETH ОСТАЁТСЯ (честность: не курируем прочь
+# убыточную монету; добавляем ADA/HYPE как доп. out-of-sample).
+_SYMS = {
+    "BTC-USDT": "BTC-USD",
+    "ETH-USDT": "ETH-USD",
+    "SOL-USDT": "SOL-USD",
+    "ADA-USDT": "ADA-USD",
+    "HYPE-USDT": "HYPE32196-USD",
+}
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
