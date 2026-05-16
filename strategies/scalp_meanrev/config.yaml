@@ -1,0 +1,17 @@
+# scalp_meanrev — 15m mean-reversion к EMA-якорю (план 31).
+# Числа из логики метода, НЕ подгон под бэктест.
+
+symbol: BTC-USDT
+timeframe: 15m
+
+anchor_ema: 50          # якорь возврата (EMA50 на 15m ≈ полдня)
+ema_fast: 20            # фильтр тренда дня
+ema_slow: 100
+trend_block_pct: 1.5    # |EMAf-EMAs|/EMAs > 1.5% → сильный тренд, не скальп
+
+atr_window: 14
+entry_k_atr: 2.0        # вход при отклонении ≥ 2·ATR от якоря
+sl_k_atr: 2.0           # стоп 2·ATR против; TP = возврат к якорю
+max_hold_bars: 8        # ≤ 2 ч на 15m — это скальп
+stop_min_pct: 0.3
+risk_tier: B

@@ -31,6 +31,15 @@ from strategies.range_reversion import (
 from strategies.range_reversion.config import (
     load_config as range_load_config,
 )
+from strategies.scalp_meanrev import (
+    ScalpMeanrevStrategy,
+)
+from strategies.scalp_meanrev import (
+    get_default_config as scalp_get_default_config,
+)
+from strategies.scalp_meanrev.config import (
+    load_config as scalp_load_config,
+)
 from strategies.trend_ema_4h import (
     TrendEmaStrategy,
 )
@@ -123,6 +132,7 @@ def main() -> None:
             "trend_ema_4h",
             "range_reversion",
             "volume_momentum",
+            "scalp_meanrev",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -217,6 +227,17 @@ def main() -> None:
             return VolumeMomentumStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _vm_factory
+    elif args.strategy == "scalp_meanrev":
+        strategy_cfg = (
+            scalp_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else scalp_get_default_config()
+        )
+
+        def _scalp_factory(cfg: Any) -> Strategy:
+            return ScalpMeanrevStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _scalp_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,
