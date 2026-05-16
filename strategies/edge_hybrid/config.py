@@ -37,6 +37,11 @@ class EdgeHybridConfig(_StrictModel):
     sweep_k_atr: float = Field(gt=0)
     sl_buf_atr: float = Field(gt=0)
     tp_r: float = Field(gt=0)
+    # Ветка C — volatility-box breakout + volume-bias (PR #152 #008)
+    box_window: int = Field(gt=1)
+    box_max_atr: float = Field(gt=0)  # высота бокса ≤ k·ATR = консолидация
+    strong_body_frac: float = Field(gt=0, le=1)  # тело/диапазон свечи пробоя
+    box_tp_r: float = Field(gt=0)
 
     @model_validator(mode="after")
     def _chk(self) -> EdgeHybridConfig:

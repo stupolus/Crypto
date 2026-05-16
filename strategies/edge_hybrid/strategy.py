@@ -54,7 +54,16 @@ class EdgeHybridStrategy:
 
         cfg = self._cfg
         history = ctx.history
-        min_history = max(cfg.anchor_ema, cfg.ema_slow, cfg.swing_lookback, cfg.atr_window + 1) + 2
+        min_history = (
+            max(
+                cfg.anchor_ema,
+                cfg.ema_slow,
+                cfg.swing_lookback,
+                cfg.box_window,
+                cfg.atr_window + 1,
+            )
+            + 2
+        )
         if len(history) < min_history:
             return None
 
@@ -67,9 +76,11 @@ class EdgeHybridStrategy:
         if anchor <= 0 or ema_slow <= 0:
             return None
 
+        # Reversion-ветки (A,B) требуют спокойного режима; пробойная
+        # ветка C — НЕТ (иначе все сделки кучкуются в те же недели,
+        # диагноз 33.1). Поэтому не ранний return, а флаг.
         spread_pct = abs(ema_fast - ema_slow) / ema_slow * _HUNDRED
-        if spread_pct > Decimal(str(cfg.trend_block_pct)):
-            return None
+        trend_ok = spread_pct <= Decimal(str(cfg.trend_block_pct))
 
         atr_value = atr(list(history[-cfg.atr_window - 1 :]), cfg.atr_window)
         if atr_value <= 0:
@@ -86,7 +97,7 @@ class EdgeHybridStrategy:
         stop: Decimal = Decimal("0")
         tp1: Decimal = Decimal("0")
 
-        if candle.low < lower - margin and candle.close > lower:
+        if trend_ok and candle.low < lower - margin and candle.close > lower:
             side, risk_side = "BUY", Side.LONG
             buf = Decimal(str(cfg.sl_buf_atr)) * atr_value
             min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
@@ -96,7 +107,7 @@ class EdgeHybridStrategy:
                 stop = entry - min_sl
                 risk = min_sl
             tp1 = entry + Decimal(str(cfg.tp_r)) * risk
-        elif candle.high > upper + margin and candle.close < upper:
+        elif trend_ok and candle.high > upper + margin and candle.close < upper:
             side, risk_side = "SELL", Side.SHORT
             buf = Decimal(str(cfg.sl_buf_atr)) * atr_value
             min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
@@ -107,8 +118,40 @@ class EdgeHybridStrategy:
                 risk = min_sl
             tp1 = entry - Decimal(str(cfg.tp_r)) * risk
 
-        # --- Ветка A: mean-reversion к якорю (если B не сработала) ---
+        # --- Ветка C: пробой бокса консолидации + volume-bias ---
+        # (PR #152 #008). Независима от trend_ok — структурно иной
+        # триггер, размазывает сделки по другим неделям (диагноз 33.1).
         if side is None:
+            box_bars = prior[-cfg.box_window :]
+            box_high = max(c.high for c in box_bars)
+            box_low = min(c.low for c in box_bars)
+            box_h = box_high - box_low
+            up_vol = sum((c.volume for c in box_bars if c.close > c.open), Decimal("0"))
+            dn_vol = sum((c.volume for c in box_bars if c.close < c.open), Decimal("0"))
+            c_range = candle.high - candle.low
+            body = abs(candle.close - candle.open)
+            tight = Decimal("0") < box_h <= Decimal(str(cfg.box_max_atr)) * atr_value
+            strong = c_range > 0 and body / c_range >= Decimal(str(cfg.strong_body_frac))
+            min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
+            if tight and strong and candle.close > box_high and up_vol > dn_vol:
+                side, risk_side = "BUY", Side.LONG
+                stop = box_low
+                risk = entry - stop
+                if risk < min_sl:
+                    stop = entry - min_sl
+                    risk = min_sl
+                tp1 = entry + Decimal(str(cfg.box_tp_r)) * risk
+            elif tight and strong and candle.close < box_low and dn_vol > up_vol:
+                side, risk_side = "SELL", Side.SHORT
+                stop = box_high
+                risk = stop - entry
+                if risk < min_sl:
+                    stop = entry + min_sl
+                    risk = min_sl
+                tp1 = entry - Decimal(str(cfg.box_tp_r)) * risk
+
+        # --- Ветка A: mean-reversion к якорю (если B/C не сработали) ---
+        if side is None and trend_ok:
             dev = entry - anchor
             thr = Decimal(str(cfg.entry_k_atr)) * atr_value
             sl_dist = Decimal(str(cfg.sl_k_atr)) * atr_value

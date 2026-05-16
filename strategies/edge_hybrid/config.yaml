@@ -17,3 +17,8 @@ swing_lookback: 20
 sweep_k_atr: 0.25
 sl_buf_atr: 0.5
 tp_r: 1.5
+# Ветка C (volatility-box breakout, PR #152 #008)
+box_window: 20          # ~5ч консолидации на 15m
+box_max_atr: 3.0        # высота бокса ≤ 3·ATR = тесный диапазон
+strong_body_frac: 0.5   # тело свечи пробоя ≥ 50% её диапазона
+box_tp_r: 1.5

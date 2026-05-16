@@ -30,6 +30,10 @@ def _cfg() -> EdgeHybridConfig:
             "sweep_k_atr": 0.25,
             "sl_buf_atr": 0.5,
             "tp_r": 1.5,
+            "box_window": 10,
+            "box_max_atr": 3.0,
+            "strong_body_frac": 0.5,
+            "box_tp_r": 1.5,
         }
     )
 
@@ -73,6 +77,20 @@ def test_branch_b_buy_on_low_sweep_reclaim() -> None:
     assert o is not None and o.side == "BUY"
 
 
+def test_branch_c_box_breakout_with_volume() -> None:
+    s = EdgeHybridStrategy(_cfg(), RiskEngine())
+    # Тесный бычий бокс (close>open → up-объём), затем сильный
+    # пробой вверх с закрытием за верх бокса.
+    hist = [_k(i, "99.8", "100.5", "99.5", "100.0") for i in range(24)]
+    hist.append(_k(24, "100.0", "102.0", "100.0", "101.8"))
+    ht = tuple(hist)
+    ctx = StrategyContext(
+        current_candle=ht[-1], history=ht, equity=Decimal("1000"), open_position=None
+    )
+    o = s.on_candle_close(ctx)
+    assert o is not None and o.side == "BUY"
+
+
 def test_no_trade_in_strong_trend() -> None:
     s = EdgeHybridStrategy(_cfg(), RiskEngine())
     hist = [
@@ -104,5 +122,9 @@ def test_config_rejects_fast_geq_slow() -> None:
                 "sweep_k_atr": 0.25,
                 "sl_buf_atr": 0.5,
                 "tp_r": 1.5,
+                "box_window": 10,
+                "box_max_atr": 3.0,
+                "strong_body_frac": 0.5,
+                "box_tp_r": 1.5,
             }
         )
