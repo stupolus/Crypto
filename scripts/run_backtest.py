@@ -22,6 +22,15 @@ from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
+from strategies.range_reversion import (
+    RangeReversionStrategy,
+)
+from strategies.range_reversion import (
+    get_default_config as range_get_default_config,
+)
+from strategies.range_reversion.config import (
+    load_config as range_load_config,
+)
 from strategies.trend_ema_4h import (
     TrendEmaStrategy,
 )
@@ -103,6 +112,7 @@ def main() -> None:
             "btc_breakout",
             "us_session_breakout",
             "trend_ema_4h",
+            "range_reversion",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -175,6 +185,17 @@ def main() -> None:
             return TrendEmaStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _trend_factory
+    elif args.strategy == "range_reversion":
+        strategy_cfg = (
+            range_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else range_get_default_config()
+        )
+
+        def _range_factory(cfg: Any) -> Strategy:
+            return RangeReversionStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _range_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,
