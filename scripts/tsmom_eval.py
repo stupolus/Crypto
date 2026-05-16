@@ -14,16 +14,14 @@ from __future__ import annotations
 
 import math
 
+from core.signals.external_signal import _PERP_TO_UNDERLYING
 from parsers.macro.seasonality import _fetch_monthly_closes
 
-# Базовые активы (Yahoo). GC=F золото, CL=F WTI, индексы.
-_ASSETS: dict[str, str] = {
-    "GOLD": "GC=F",
-    "WTI_OIL": "CL=F",
-    "SP500": "^GSPC",
-    "NASDAQ": "^IXIC",
-    "DOW": "^DJI",
-}
+# Единый источник истины — карта перп→базовый из external_signal.
+# Здесь: уникальные базовые активы (дедуп: AAPL/NVDA/META маппятся
+# из нескольких перпов). Покрывает весь RWA/stock/index/FX-юниверс
+# BingX, у которого есть глубокий внешний прокси.
+_ASSETS: dict[str, str] = {u: u for u in sorted(set(_PERP_TO_UNDERLYING.values()))}
 _LOOKBACK = 12  # мес, как в статье
 
 

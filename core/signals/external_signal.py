@@ -23,10 +23,35 @@ import httpx
 
 from parsers.macro.seasonality import _fetch_monthly_closes
 
-# Перп BingX → тикер базового актива Yahoo (только проверенные
-# планом 26; нефть/индексы исключены как непроходящие).
+# Перп BingX → тикер базового актива Yahoo (глубокая история).
+# Принцип CLAUDE.md №1: сигнал валидируется во внешнем глубоком
+# источнике, исполняется на перпе. Это КАРТА покрытия, НЕ
+# гарантия edge — проходимость гейта проверяет план 26 (tsmom_eval).
+# Крипто-перпы сюда НЕ входят: их «глубокий источник» — Coinglass
+# (DOLF, план 23), а не ценовой прокси.
 _PERP_TO_UNDERLYING: dict[str, str] = {
+    # Металлы / товары
     "XAUT-USDT": "GC=F",
+    "NCCOGOLD2USD-USDT": "GC=F",
+    "NCCO1OILWTI2USD-USDT": "CL=F",
+    "NCCO1OILBRENT2USD-USDT": "BZ=F",
+    "NCCOHEATINGOIL2USD-USDT": "HO=F",
+    # Индексы
+    "NCSINASDAQ1002USD-USDT": "^IXIC",
+    "NCSISP5002USD-USDT": "^GSPC",
+    "NCSIDOWJONES2USD-USDT": "^DJI",
+    # Токен-акции
+    "NCSKTSLA2USD-USDT": "TSLA",
+    "NCSKNVDA2USD-USDT": "NVDA",
+    "NCSKAAPL2USD-USDT": "AAPL",
+    "NCSKGOOGL2USD-USDT": "GOOGL",
+    "NCSKMETA2USD-USDT": "META",
+    "NCSKMSTR2USD-USDT": "MSTR",
+    "AAPLX-USDT": "AAPL",
+    "NVDAX-USDT": "NVDA",
+    "METAX-USDT": "META",
+    # FX
+    "NCFXAUD2USD-USDT": "AUDUSD=X",
 }
 _TSMOM_LOOKBACK_M = 12  # план 26 / Moskowitz 2012
 

@@ -29,7 +29,7 @@ def _resp(closes: list[float]) -> httpx.Response:
 
 def test_map_perp_to_underlying() -> None:
     assert map_perp_to_underlying("XAUT-USDT") == "GC=F"
-    assert map_perp_to_underlying("NCSKTSLA2USD-USDT") is None
+    assert map_perp_to_underlying("BTC-USDT") is None
 
 
 def test_protocol_runtime_check() -> None:
@@ -54,7 +54,7 @@ def test_short_when_underlying_down_over_lookback() -> None:
 
 def test_unsupported_perp_is_flat() -> None:
     p = TsmomSignalProvider(client=httpx.Client(), backoff=0.0)
-    assert p.direction("NCSKTSLA2USD-USDT", 0) is SignalDirection.FLAT
+    assert p.direction("BTC-USDT", 0) is SignalDirection.FLAT
 
 
 @respx.mock
