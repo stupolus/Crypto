@@ -188,10 +188,12 @@ def transcribe(lid: str, mp3: str) -> str:
         vad_parameters={"min_silence_duration_ms": 500},
     )
     parts: list[str] = []
-    with open(txt, "w", encoding="utf-8") as f:
+    tmp = WORK / f"{lid}.txt.partial"
+    with open(tmp, "w", encoding="utf-8") as f:
         for s in segments:
             parts.append(s.text.strip())
             f.write(s.text.strip() + " ")
+    tmp.replace(txt)
     return " ".join(parts)
 
 
