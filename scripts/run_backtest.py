@@ -40,6 +40,15 @@ from strategies.scalp_meanrev import (
 from strategies.scalp_meanrev.config import (
     load_config as scalp_load_config,
 )
+from strategies.smc_liqsweep import (
+    SmcLiqsweepStrategy,
+)
+from strategies.smc_liqsweep import (
+    get_default_config as smc_get_default_config,
+)
+from strategies.smc_liqsweep.config import (
+    load_config as smc_load_config,
+)
 from strategies.trend_ema_4h import (
     TrendEmaStrategy,
 )
@@ -133,6 +142,7 @@ def main() -> None:
             "range_reversion",
             "volume_momentum",
             "scalp_meanrev",
+            "smc_liqsweep",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -238,6 +248,17 @@ def main() -> None:
             return ScalpMeanrevStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _scalp_factory
+    elif args.strategy == "smc_liqsweep":
+        strategy_cfg = (
+            smc_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else smc_get_default_config()
+        )
+
+        def _smc_factory(cfg: Any) -> Strategy:
+            return SmcLiqsweepStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _smc_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,
