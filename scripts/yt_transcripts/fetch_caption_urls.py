@@ -16,18 +16,43 @@ import subprocess
 import sys
 
 # Порядок предпочтения языка дорожки субтитров.
-LANG_PREF = ("ru", "ru-RU", "en", "en-US", "en-GB")
+LANG_PREF = ("en", "en-US", "en-GB", "ru", "ru-RU")
 
 
-def pick_track(tracks: dict) -> tuple[str, list] | tuple[None, None]:
-    """Выбрать языковую дорожку по LANG_PREF, иначе первую доступную."""
+def _lang_rank(lang: str) -> int:
+    base = lang.replace("-orig", "")
+    for i, pref in enumerate(LANG_PREF):
+        if base == pref:
+            return i
+    return len(LANG_PREF)
+
+
+def pick_track(tracks: dict) -> tuple[str, str] | tuple[None, None]:
+    """Выбрать дорожку: оригинальный ASR в приоритете над переводом.
+
+    Машинный перевод (`tlang=` в URL) — и не настоящий ASR, и часто
+    не тянется через прокси-экстрактор. Берём трек, чей json3-URL
+    без `tlang=` (исходная речь), предпочитая язык по LANG_PREF.
+    Перевод — только если оригинала нет вовсе.
+    """
     if not tracks:
         return None, None
-    for lang in LANG_PREF:
-        if lang in tracks:
-            return lang, tracks[lang]
-    first = sorted(tracks)[0]
-    return first, tracks[first]
+    originals: list[tuple[str, str]] = []
+    translated: list[tuple[str, str]] = []
+    for lang, fmts in tracks.items():
+        chosen = next(
+            (f for f in fmts if f.get("ext") == "json3" and f.get("url")),
+            None,
+        ) or next((f for f in fmts if f.get("url")), None)
+        if not chosen:
+            continue
+        url = chosen["url"]
+        (translated if "tlang=" in url else originals).append((lang, url))
+    pool = originals or translated
+    if not pool:
+        return None, None
+    pool.sort(key=lambda lu: (_lang_rank(lu[0]), lu[0]))
+    return pool[0]
 
 
 def to_json3(url: str) -> str:
@@ -41,12 +66,19 @@ def to_json3(url: str) -> str:
 
 
 def fetch_one(video_id: str) -> dict | None:
+    # IP под bot-челленджем YouTube: web/ios/android-клиенты режутся
+    # «Sign in to confirm you're not a bot». Клиент `tv` стену проходит,
+    # форматов видео нет — поэтому --ignore-no-formats-error (нам нужны
+    # только caption-URL из player-response, не сами форматы).
     cmd = [
         "yt-dlp",
         "--no-check-certificate",
         "--skip-download",
+        "--ignore-no-formats-error",
         "--no-warnings",
         "--dump-single-json",
+        "--extractor-args",
+        "youtube:player_client=tv",
         "--",
         video_id,
     ]
@@ -72,20 +104,13 @@ def fetch_one(video_id: str) -> dict | None:
 
     # Сначала ручные субтитры, потом авто-ASR.
     for source in ("subtitles", "automatic_captions"):
-        lang, fmts = pick_track(info.get(source) or {})
-        if not fmts:
-            continue
-        # Берём json3, иначе любой с url.
-        chosen = next(
-            (f for f in fmts if f.get("ext") == "json3" and f.get("url")),
-            None,
-        ) or next((f for f in fmts if f.get("url")), None)
-        if not chosen:
+        lang, url = pick_track(info.get(source) or {})
+        if not url:
             continue
         return {
             "lang": lang,
             "source": source,
-            "url": to_json3(chosen["url"]),
+            "url": to_json3(url),
             "title": info.get("title") or "",
         }
     return None
