@@ -116,8 +116,15 @@ def _m(series: list[float], tag: str) -> str:
     loss = -sum(x for x in series if x < 0)
     pf = float("inf") if loss == 0 else w / loss
     pf_s = "inf" if pf == float("inf") else f"{pf:.2f}"
+    eq = 1.0
+    for x in series:
+        eq *= 1 + x
+    pnl_pct = (eq - 1) * 100
     gate = "✓" if (pf > 1.3 and sharpe > 0.8 and t > 2.0 and n >= 30) else "✗"
-    return f"{tag}: недель={n:3d} PF={pf_s:>4s} Sharpe={sharpe:+5.2f} t={t:+4.2f} p={p:.3f} {gate}"
+    return (
+        f"{tag}: недель={n:3d} PF={pf_s:>4s} Sharpe={sharpe:+5.2f} "
+        f"t={t:+4.2f} p={p:.3f} итогPnL={pnl_pct:+7.1f}% {gate}"
+    )
 
 
 def main() -> None:

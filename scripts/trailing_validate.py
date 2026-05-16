@@ -123,8 +123,15 @@ def _metrics(series: list[float], tag: str) -> str:
     t = m / (sd / math.sqrt(n)) if sd > 0 else 0.0
     p = math.erfc(abs(t) / math.sqrt(2))
     pos = sum(1 for x in series if x > 0)
+    eq = 1.0
+    for x in series:
+        eq *= 1 + x
+    pnl_pct = (eq - 1) * 100
     gate = "✓" if (sharpe > 0.8 and t > 2.0 and n >= 30) else "✗"
-    return f"{tag}: недель={n:3d} Sharpe={sharpe:+5.2f} t={t:+4.2f} p={p:.3f} нед+={pos}/{n} {gate}"
+    return (
+        f"{tag}: недель={n:3d} Sharpe={sharpe:+5.2f} t={t:+4.2f} "
+        f"p={p:.3f} нед+={pos}/{n} итогPnL={pnl_pct:+7.1f}% {gate}"
+    )
 
 
 def main() -> None:
