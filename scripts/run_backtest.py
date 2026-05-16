@@ -49,6 +49,15 @@ from strategies.us_session_breakout import (
 from strategies.us_session_breakout.config import (
     load_config as us_load_config,
 )
+from strategies.volume_momentum import (
+    VolumeMomentumStrategy,
+)
+from strategies.volume_momentum import (
+    get_default_config as vm_get_default_config,
+)
+from strategies.volume_momentum.config import (
+    load_config as vm_load_config,
+)
 
 
 def _decimal_to_json(obj: object) -> object:
@@ -113,6 +122,7 @@ def main() -> None:
             "us_session_breakout",
             "trend_ema_4h",
             "range_reversion",
+            "volume_momentum",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -196,6 +206,17 @@ def main() -> None:
             return RangeReversionStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _range_factory
+    elif args.strategy == "volume_momentum":
+        strategy_cfg = (
+            vm_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else vm_get_default_config()
+        )
+
+        def _vm_factory(cfg: Any) -> Strategy:
+            return VolumeMomentumStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _vm_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,
