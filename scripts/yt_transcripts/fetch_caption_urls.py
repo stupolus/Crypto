@@ -11,9 +11,11 @@ Usage:
 videos.json: [{"n":1,"kind":"video","id":"abc","title":"..."}]
 manifest.json: [{"n","id","title","lang","source","url"}]
 """
+
 import json
 import subprocess
 import sys
+from typing import Any
 
 # Порядок предпочтения языка дорожки субтитров.
 LANG_PREF = ("en", "en-US", "en-GB", "ru", "ru-RU")
@@ -27,7 +29,9 @@ def _lang_rank(lang: str) -> int:
     return len(LANG_PREF)
 
 
-def pick_track(tracks: dict) -> tuple[str, str] | tuple[None, None]:
+def pick_track(
+    tracks: dict[str, Any],
+) -> tuple[str, str] | tuple[None, None]:
     """Выбрать дорожку: оригинальный ASR в приоритете над переводом.
 
     Машинный перевод (`tlang=` в URL) — и не настоящий ASR, и часто
@@ -65,7 +69,7 @@ def to_json3(url: str) -> str:
     return f"{url}{sep}fmt=json3"
 
 
-def fetch_one(video_id: str) -> dict | None:
+def fetch_one(video_id: str) -> dict[str, Any] | None:
     # IP под bot-челленджем YouTube: web/ios/android-клиенты режутся
     # «Sign in to confirm you're not a bot». Клиент `tv` стену проходит,
     # форматов видео нет — поэтому --ignore-no-formats-error (нам нужны
@@ -83,16 +87,13 @@ def fetch_one(video_id: str) -> dict | None:
         video_id,
     ]
     try:
-        out = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120
-        )
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         print(f"  ! timeout {video_id}", file=sys.stderr)
         return None
     if out.returncode != 0:
         print(
-            f"  ! yt-dlp rc={out.returncode} {video_id}: "
-            f"{out.stderr.strip()[:300]}",
+            f"  ! yt-dlp rc={out.returncode} {video_id}: {out.stderr.strip()[:300]}",
             file=sys.stderr,
         )
         return None
@@ -120,7 +121,8 @@ def main() -> int:
     if len(sys.argv) != 3:
         print(__doc__)
         return 2
-    videos = json.loads(open(sys.argv[1], encoding="utf-8").read())
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        videos = json.load(fh)
     manifest = []
     for v in videos:
         vid = v["id"]

@@ -4,6 +4,7 @@
 Usage:
     python3 build_index.py OUTDIR
 """
+
 import re
 import sys
 from pathlib import Path
@@ -43,13 +44,9 @@ def main() -> int:
     for i, (fn, title, vid, words) in enumerate(rows, 1):
         link = f"https://youtu.be/{vid}" if vid else ""
         safe = title.replace("|", "\\|")
-        lines.append(
-            f"| {i} | [{fn}]({fn}) | {link} | {words} | {safe} |"
-        )
+        lines.append(f"| {i} | [{fn}]({fn}) | {link} | {words} | {safe} |")
 
-    (outdir / "INDEX.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
-    )
+    (outdir / "INDEX.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"INDEX.md: {len(rows)} записей", file=sys.stderr)
     return 0
 

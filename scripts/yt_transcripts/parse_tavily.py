@@ -10,6 +10,7 @@ Usage:
 
 Файл tavily должен содержать id видео в имени (…<id>….{json,txt,xml}).
 """
+
 import json
 import re
 import sys
@@ -43,7 +44,7 @@ def load_payload(path: Path) -> str:
                 return joined
         for key in ("raw_content", "content", "text"):
             if obj.get(key):
-                return obj[key]
+                return str(obj[key])
     return raw
 
 
@@ -148,8 +149,7 @@ def main() -> int:
         )
         fn.write_text(header + body + "\n", encoding="utf-8")
         written += 1
-        print(f"[{n}] {vid} → {fn.name} ({len(lines)} сегм.)",
-              file=sys.stderr)
+        print(f"[{n}] {vid} → {fn.name} ({len(lines)} сегм.)", file=sys.stderr)
 
     print(f"\n{written} транскрипт(ов) в {outdir}", file=sys.stderr)
     return 0

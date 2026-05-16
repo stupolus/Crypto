@@ -8,6 +8,7 @@ Tavily возвращает {"results":[{"url","raw_content"}], "failed_results"
 Usage:
     python3 split_tavily.py manifest.json tavily/ tavily_resp1.json […]
 """
+
 import json
 import re
 import sys
@@ -37,11 +38,7 @@ def main() -> int:
             saved.add(vid)
 
     have = {p.stem for p in tdir.glob("*.json")}
-    need = [
-        e["id"]
-        for e in manifest
-        if e.get("url") and e["id"] not in have
-    ]
+    need = [e["id"] for e in manifest if e.get("url") and e["id"] not in have]
     print(f"сохранено в этом прогоне: {len(saved)}", file=sys.stderr)
     print(f"всего на диске: {len(have)}/{len(manifest)}", file=sys.stderr)
     if need:
