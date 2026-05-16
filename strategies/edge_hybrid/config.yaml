@@ -1,0 +1,19 @@
+# edge_hybrid — scalp ∨ SMC (план 33). Числа из логики (AGENTS.md),
+# унаследованы из config.yaml планов 31/32 без подгонки.
+symbol: BTC-USDT
+timeframe: 15m
+ema_fast: 20
+ema_slow: 100
+trend_block_pct: 1.5
+atr_window: 14
+stop_min_pct: 0.3
+risk_tier: B
+# Ветка A (mean-reversion)
+anchor_ema: 50
+entry_k_atr: 2.0
+sl_k_atr: 2.0
+# Ветка B (liquidity-sweep)
+swing_lookback: 20
+sweep_k_atr: 0.25
+sl_buf_atr: 0.5
+tp_r: 1.5

@@ -22,6 +22,15 @@ from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
+from strategies.edge_hybrid import (
+    EdgeHybridStrategy,
+)
+from strategies.edge_hybrid import (
+    get_default_config as hybrid_get_default_config,
+)
+from strategies.edge_hybrid.config import (
+    load_config as hybrid_load_config,
+)
 from strategies.range_reversion import (
     RangeReversionStrategy,
 )
@@ -143,6 +152,7 @@ def main() -> None:
             "volume_momentum",
             "scalp_meanrev",
             "smc_liqsweep",
+            "edge_hybrid",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -259,6 +269,17 @@ def main() -> None:
             return SmcLiqsweepStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _smc_factory
+    elif args.strategy == "edge_hybrid":
+        strategy_cfg = (
+            hybrid_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else hybrid_get_default_config()
+        )
+
+        def _hybrid_factory(cfg: Any) -> Strategy:
+            return EdgeHybridStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _hybrid_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,
