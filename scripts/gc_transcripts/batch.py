@@ -108,16 +108,25 @@ def fetch_audio(lid: str) -> str | None:
         pg.wait_for_timeout(6000)
         # The GetCourse/Kinescope player only requests the HLS master
         # after the play button is engaged. Click into the sign-player
-        # iframe to start it, then wait for the master request.
-        for _ in range(4):
-            if got["u"]:
-                break
-            for fr in pg.frames:
-                if "sign-player" in (fr.url or ""):
-                    with contextlib.suppress(Exception):
-                        fr.locator("body").first.click(timeout=4000)
+        # iframe to start it, then wait for the master request. Reload
+        # once and retry — a cold browser (first lesson after a restart)
+        # can be too slow on the first pass, which must NOT be mistaken
+        # for "no video" (it would write a false stub).
+        for cycle in range(2):
+            for _ in range(5):
+                if got["u"]:
                     break
-            pg.wait_for_timeout(9000)
+                for fr in pg.frames:
+                    if "sign-player" in (fr.url or ""):
+                        with contextlib.suppress(Exception):
+                            fr.locator("body").first.click(timeout=4000)
+                        break
+                pg.wait_for_timeout(9000)
+            if got["u"] or cycle == 1:
+                break
+            with contextlib.suppress(Exception):
+                pg.reload(wait_until="domcontentloaded", timeout=60000)
+            pg.wait_for_timeout(8000)
         if not got["u"]:
             ctx.close()
             b.close()
