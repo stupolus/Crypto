@@ -28,11 +28,12 @@ from typing import Any
 
 WORK = Path("/tmp/yt_work")
 REPO = Path("/home/user/Crypto")
-OUTDIR = REPO / "бизнес/материалы/курс-криптограмотность/raw/уроки"
+OUTDIR = REPO / os.environ.get("GC_OUT_SUBDIR", "бизнес/материалы/курс-криптограмотность/raw/уроки")
 STATE = WORK / "gc_state.json"
 MODEL = WORK / "fwsmall"
-LESSONS = Path(__file__).with_name("lessons_map.json")
+LESSONS = Path(os.environ.get("GC_LESSONS_MAP", str(Path(__file__).with_name("lessons_map.json"))))
 BASE = "https://cryptogramotnost.getcourse.ru"
+COMMIT_PREFIX = os.environ.get("GC_COMMIT_PREFIX", "курс Криптограмотность")
 BRANCH = "claude/crypto-video-transcripts-PnCMQ"
 SKIP_MARK = ("Есть задание", "тестирование", "Учебный план", "Список литературы")
 UA = (
@@ -221,7 +222,7 @@ def commit_push(path: Path, n: int, title: str) -> bool:
         "commit",
         "-q",
         "-m",
-        f"курс Криптограмотность: транскрипт урок №{n} — {title[:60]}\n\n"
+        f"{COMMIT_PREFIX}: транскрипт урок №{n} — {title[:60]}\n\n"
         f"https://claude.ai/code/session_0161wmhxuWzdWNGzL9vpos16",
     )
     r = git("status")
