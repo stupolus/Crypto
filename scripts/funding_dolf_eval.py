@@ -105,11 +105,12 @@ def _stats(rows: list[tuple[int, float]], tag: str) -> str:
     )
 
 
-def _variant(h: int, use_liq: bool) -> None:
+def _collect(h: int, use_liq: bool, use_cvd: bool) -> list[tuple[int, float]]:
     raw: list[tuple[int, float]] = []
     for sym in _COINS:
         fund = _load_ts_val(_CG / f"{sym}-funding-1d.jsonl")
         liq = _load_liq(_CG / f"{sym}-liq-1d.jsonl")
+        cvd = _load_ts_val(_CG / f"{sym}-cvd-1d.jsonl")
         close = _load_daily_close(sym)
         if not fund or not close:
             continue
@@ -136,6 +137,16 @@ def _variant(h: int, use_liq: bool) -> None:
                     continue
                 if side == 1 and short_liq <= long_liq:
                     continue
+            if use_cvd:
+                prev = d - 86_400_000
+                if d not in cvd or prev not in cvd:
+                    continue
+                dcvd = cvd[d] - cvd[prev]
+                # поток подтверждает разворот: контр-шорт ⇒ CVD↓
+                if side == -1 and dcvd >= 0:
+                    continue
+                if side == 1 and dcvd <= 0:
+                    continue
             dkey = d - (d % 86_400_000)
             future = d + h * 86_400_000
             fkey = future - (future % 86_400_000)
@@ -143,16 +154,38 @@ def _variant(h: int, use_liq: bool) -> None:
                 continue
             ret = (close[fkey] / close[dkey] - 1.0) * side
             raw.append((d, ret))
-    if not raw:
-        print(f"  H={h} liq={use_liq}: нет наблюдений")
-        return
     raw.sort()
+    return raw
+
+
+def _wf(raw: list[tuple[int, float]], cost: float, folds: int = 4) -> str:
+    """Walk-forward: folds последовательных OOS-окон, доля + и
+    суммарный ret. Робастность против single-split артефакта."""
+    if len(raw) < folds * 8:
+        return "WF: мало данных"
+    step = len(raw) // folds
+    pos = 0
+    tot = 0.0
+    for k in range(folds):
+        seg = raw[k * step : (k + 1) * step]
+        m = sum(r - cost for _, r in seg) / len(seg)
+        tot += m * len(seg)
+        if m > 0:
+            pos += 1
+    return f"WF{folds}: +фолдов {pos}/{folds} сумм.ret={tot * 100:+.1f}%"
+
+
+def _variant(h: int, use_liq: bool, use_cvd: bool) -> None:
+    raw = _collect(h, use_liq, use_cvd)
+    if not raw:
+        print(f"  H={h} liq={use_liq} cvd={use_cvd}: нет наблюдений")
+        return
     split = raw[len(raw) // 2][0]
-    tag = f"H={h}д liq={'да' if use_liq else 'нет'}"
+    tag = f"H={h}д liq={'да' if use_liq else '..'} cvd={'да' if use_cvd else '..'}"
     print(f"  -- {tag}: всего {len(raw)} --")
     for c in _COSTS:
         oos = [(ms, r - c) for ms, r in raw if ms >= split]
-        print(f"    cost {c:.2%} {_stats(oos, 'OOS')}")
+        print(f"    cost {c:.2%} {_stats(oos, 'OOS')} | {_wf(raw, c)}")
 
 
 def main() -> None:
@@ -161,8 +194,9 @@ def main() -> None:
     print("Гейт: OOS PF>1.3 ∧ Sh>0.8 ∧ t>2 ∧ ≥8нед на ВСЕХ cost.")
     print("=" * 66)
     for h in _HORIZONS:
-        for use_liq in (False, True):
-            _variant(h, use_liq)
+        _variant(h, False, False)
+        _variant(h, True, False)
+        _variant(h, True, True)
     print("=" * 66)
     print("Все ✗ → funding-edge на наших данных нет, фиксируем честно.")
     print("Хоть один ✓ на всех cost+OOS → реальный кандидат (план 29).")
