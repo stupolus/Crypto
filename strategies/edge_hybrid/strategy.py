@@ -48,6 +48,11 @@ class EdgeHybridStrategy:
             self._current_day = day
             self._day_pnl = Decimal("0")
             self._day_trades_count = 0
+            # «3 убытка подряд = стоп ДО ЗАВТРА» (риск-профиль.md):
+            # на новом дне счётчик обязан обнуляться. Без этого
+            # circuit breaker был ВЕЧНЫМ → стратегия умирала после
+            # 3 лоссов на весь бэктест (корень «нет статбазы» 31–33).
+            self._consecutive_losses = 0
 
         if ctx.open_position is not None:
             return None
