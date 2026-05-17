@@ -22,6 +22,8 @@ _COINS = [
 ]  # fmt: skip
 _OPS = "ops"
 _COSTS = [0.0010, 0.0015, 0.0020]
+# Таймфрейм из argv (по умолч. 15m): data/candles/<sym>-<tf>.jsonl
+_TF = sys.argv[1] if len(sys.argv) > 1 else "15m"
 
 
 def _newest(tag: str, after: float) -> str | None:
@@ -74,7 +76,7 @@ def main() -> None:
     raw: list[tuple[int, float, str]] = []
     per_coin_n: dict[str, int] = {}
     for sym in _COINS:
-        candle = f"data/candles/{sym.lower()}-15m.jsonl"
+        candle = f"data/candles/{sym.lower()}-{_TF}.jsonl"
         if not os.path.exists(candle):
             continue
         t0 = max(
@@ -102,7 +104,7 @@ def main() -> None:
         return
     raw.sort()
     split = raw[len(raw) // 2][0]
-    print("edge_hybrid — промежуточный гейт (15m мажоры, план 33.1)")
+    print(f"edge_hybrid — промежуточный гейт ({_TF} мажоры, план 33)")
     print(f"Всего сделок: {len(raw)} | по монетам: {per_coin_n}")
     print("Промеж.: PF>1.3 Sh>0.8 t>1.5 ≥60 ≥8нед | Цель: PF>1.5 Sh>1.0 t>2 ≥100")
     print("=" * 70)
