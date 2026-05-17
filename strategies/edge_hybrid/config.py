@@ -28,6 +28,10 @@ class EdgeHybridConfig(_StrictModel):
     atr_window: int = Field(gt=0)
     stop_min_pct: float = Field(gt=0)
     risk_tier: RiskTier = RiskTier.B
+    # Включение веток (для атрибуции edge; деф. все вкл.)
+    enable_a: bool = True
+    enable_b: bool = True
+    enable_c: bool = True
     # Ветка A — mean-reversion к якорю
     anchor_ema: int = Field(gt=1)
     entry_k_atr: float = Field(gt=0)

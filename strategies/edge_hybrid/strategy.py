@@ -102,7 +102,7 @@ class EdgeHybridStrategy:
         stop: Decimal = Decimal("0")
         tp1: Decimal = Decimal("0")
 
-        if trend_ok and candle.low < lower - margin and candle.close > lower:
+        if cfg.enable_b and trend_ok and candle.low < lower - margin and candle.close > lower:
             side, risk_side = "BUY", Side.LONG
             buf = Decimal(str(cfg.sl_buf_atr)) * atr_value
             min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
@@ -112,7 +112,12 @@ class EdgeHybridStrategy:
                 stop = entry - min_sl
                 risk = min_sl
             tp1 = entry + Decimal(str(cfg.tp_r)) * risk
-        elif trend_ok and candle.high > upper + margin and candle.close < upper:
+        elif (
+            cfg.enable_b
+            and trend_ok
+            and candle.high > upper + margin
+            and candle.close < upper
+        ):
             side, risk_side = "SELL", Side.SHORT
             buf = Decimal(str(cfg.sl_buf_atr)) * atr_value
             min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
@@ -126,7 +131,7 @@ class EdgeHybridStrategy:
         # --- Ветка C: пробой бокса консолидации + volume-bias ---
         # (PR #152 #008). Независима от trend_ok — структурно иной
         # триггер, размазывает сделки по другим неделям (диагноз 33.1).
-        if side is None:
+        if side is None and cfg.enable_c:
             box_bars = prior[-cfg.box_window :]
             box_high = max(c.high for c in box_bars)
             box_low = min(c.low for c in box_bars)
@@ -156,7 +161,7 @@ class EdgeHybridStrategy:
                 tp1 = entry - Decimal(str(cfg.box_tp_r)) * risk
 
         # --- Ветка A: mean-reversion к якорю (если B/C не сработали) ---
-        if side is None and trend_ok:
+        if side is None and cfg.enable_a and trend_ok:
             dev = entry - anchor
             thr = Decimal(str(cfg.entry_k_atr)) * atr_value
             sl_dist = Decimal(str(cfg.sl_k_atr)) * atr_value
