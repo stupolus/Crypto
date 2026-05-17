@@ -22,6 +22,8 @@ from strategies.edge_hybrid import EdgeHybridStrategy, get_default_config
 _COINS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "DOGE-USDT", "XRP-USDT", "BNB-USDT"]
 _COSTS = [0.0010, 0.0015, 0.0020]
 _TF = sys.argv[1] if len(sys.argv) > 1 else "30m"
+# argv[2]: MARKET (taker) | LIMIT (maker, как фонды). Деф. MARKET.
+_OT = sys.argv[2] if len(sys.argv) > 2 else "MARKET"
 
 
 def _weekly(tr: list[tuple[int, float]]) -> list[float]:
@@ -58,7 +60,13 @@ def _run_leg(tag: str, ea: bool, eb: bool, ec: bool) -> None:
         if not cf.exists():
             continue
         cfg = base.model_copy(
-            update={"symbol": sym, "enable_a": ea, "enable_b": eb, "enable_c": ec}
+            update={
+                "symbol": sym,
+                "enable_a": ea,
+                "enable_b": eb,
+                "enable_c": ec,
+                "entry_order_type": _OT,
+            }
         )
         cands = load_candles(cf)
         res = BacktestEngine(bt_cfg()).run(
@@ -90,7 +98,7 @@ def _run_leg(tag: str, ea: bool, eb: bool, ec: bool) -> None:
 
 
 def main() -> None:
-    print(f"edge_hybrid атрибуция по веткам ({_TF}, план 33.10)")
+    print(f"edge_hybrid атрибуция ({_TF}, вход={_OT}, план 33.11)")
     print("Гейт честный: положительный OOS-edge ≥8 корзин + cost-sweep")
     print("=" * 64)
     _run_leg("ТОЛЬКО A (mean-rev)", True, False, False)

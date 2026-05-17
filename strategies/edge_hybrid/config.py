@@ -32,6 +32,10 @@ class EdgeHybridConfig(_StrictModel):
     enable_a: bool = True
     enable_b: bool = True
     enable_c: bool = True
+    # Тип входного ордера: MARKET (taker) или LIMIT (maker, как
+    # фонды — своя цена, maker-fee, без adverse slippage, часть
+    # сделок не исполняется). Деф. MARKET — поведение не меняется.
+    entry_order_type: Literal["MARKET", "LIMIT"] = "MARKET"
     # Ветка A — mean-reversion к якорю
     anchor_ema: int = Field(gt=1)
     entry_k_atr: float = Field(gt=0)

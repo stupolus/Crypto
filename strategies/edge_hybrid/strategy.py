@@ -112,12 +112,7 @@ class EdgeHybridStrategy:
                 stop = entry - min_sl
                 risk = min_sl
             tp1 = entry + Decimal(str(cfg.tp_r)) * risk
-        elif (
-            cfg.enable_b
-            and trend_ok
-            and candle.high > upper + margin
-            and candle.close < upper
-        ):
+        elif cfg.enable_b and trend_ok and candle.high > upper + margin and candle.close < upper:
             side, risk_side = "SELL", Side.SHORT
             buf = Decimal(str(cfg.sl_buf_atr)) * atr_value
             min_sl = entry * Decimal(str(cfg.stop_min_pct)) / _HUNDRED
@@ -197,6 +192,17 @@ class EdgeHybridStrategy:
             return None
         assert isinstance(decision, RiskApproval)
 
+        if cfg.entry_order_type == "LIMIT":
+            return OrderRequest(
+                symbol=cfg.symbol,
+                side=side,
+                order_type="LIMIT",
+                quantity=decision.quantity,
+                price=entry,  # maker: своя цена = close сигнал-бара
+                attached_stop_loss=stop,
+                attached_take_profit=tp1,
+                client_order_id=uuid.uuid4().hex[:32],
+            )
         return OrderRequest(
             symbol=cfg.symbol,
             side=side,
