@@ -164,6 +164,7 @@ class BtcBreakoutStrategy:
             side=risk_side,
             entry_price=entry,
             stop_price=stop,
+            take_profit_price=tp1,
             tier=self._cfg.risk_tier,
             day_pnl=self._day_pnl,
             day_trades_count=self._day_trades_count,

@@ -1,0 +1,34 @@
+# btc_breakout — СКАЛЬП-вариация. Обоснование: plans/23-btc-свинг-vs-скальп-2026-05-17.md.
+# Та же логика (Donchian breakout + ATR + volume + composite), но короткий
+# таймфрейм и tier SCALP (fee-edge-gate, план 22). Числа — стартовые,
+# не подгонка под бэктест; меняем через план.
+
+symbol: BTC-USDT
+timeframe: 5m
+
+# Donchian: 12 свечей 5m = 1 час «свежего движения».
+donchian_n: 12
+
+# ATR
+atr_window: 14
+atr_percentile_min: 0.5       # верхняя половина волатильности
+atr_percentile_lookback: 200  # ~16 часов на 5m
+
+# Volume
+volume_sma_window: 12
+volume_multiplier: 1.5
+
+# Composite
+funding_rate_max_pct: 0.05
+
+# Stop: минимум 0.2% (тоньше свинга, но >= риск-профиль stop_min 0.15).
+stop_min_pct: 0.2
+
+# TP1: 1.5R. При stop 0.2% → TP ~0.3% = ровно fee-edge порог
+# (k=2 × trade_cost 0.15%). Реальный TP по R-кратному стопу обычно выше.
+tp1_r_multiple: 1.5
+
+tp2_trailing_ema: 21
+
+# Скальп-профиль из плана 22.
+risk_tier: SCALP
