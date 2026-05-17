@@ -1,0 +1,14 @@
+# smc_liqsweep — liquidity-sweep reversion (план 32).
+# Числа из логики, не подгон под бэктест (AGENTS.md).
+symbol: BTC-USDT
+timeframe: 15m
+swing_lookback: 20      # ~5ч ликвидности на 15m — типовой swing-горизонт
+sweep_k_atr: 0.25       # хвост за уровень ≥ 0.25·ATR = значимый прокол
+ema_fast: 20
+ema_slow: 100
+trend_block_pct: 1.5    # как в scalp_meanrev: сильный тренд → не contrarian
+atr_window: 14
+sl_buf_atr: 0.5         # буфер за экстремум свипа
+tp_r: 1.5               # возврат к противоположной ликвидности ≈ 1.5R
+stop_min_pct: 0.3
+risk_tier: B

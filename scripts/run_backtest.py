@@ -22,6 +22,42 @@ from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
+from strategies.edge_hybrid import (
+    EdgeHybridStrategy,
+)
+from strategies.edge_hybrid import (
+    get_default_config as hybrid_get_default_config,
+)
+from strategies.edge_hybrid.config import (
+    load_config as hybrid_load_config,
+)
+from strategies.range_reversion import (
+    RangeReversionStrategy,
+)
+from strategies.range_reversion import (
+    get_default_config as range_get_default_config,
+)
+from strategies.range_reversion.config import (
+    load_config as range_load_config,
+)
+from strategies.scalp_meanrev import (
+    ScalpMeanrevStrategy,
+)
+from strategies.scalp_meanrev import (
+    get_default_config as scalp_get_default_config,
+)
+from strategies.scalp_meanrev.config import (
+    load_config as scalp_load_config,
+)
+from strategies.smc_liqsweep import (
+    SmcLiqsweepStrategy,
+)
+from strategies.smc_liqsweep import (
+    get_default_config as smc_get_default_config,
+)
+from strategies.smc_liqsweep.config import (
+    load_config as smc_load_config,
+)
 from strategies.trend_ema_4h import (
     TrendEmaStrategy,
 )
@@ -39,6 +75,15 @@ from strategies.us_session_breakout import (
 )
 from strategies.us_session_breakout.config import (
     load_config as us_load_config,
+)
+from strategies.volume_momentum import (
+    VolumeMomentumStrategy,
+)
+from strategies.volume_momentum import (
+    get_default_config as vm_get_default_config,
+)
+from strategies.volume_momentum.config import (
+    load_config as vm_load_config,
 )
 
 
@@ -103,6 +148,11 @@ def main() -> None:
             "btc_breakout",
             "us_session_breakout",
             "trend_ema_4h",
+            "range_reversion",
+            "volume_momentum",
+            "scalp_meanrev",
+            "smc_liqsweep",
+            "edge_hybrid",
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
@@ -175,6 +225,61 @@ def main() -> None:
             return TrendEmaStrategy(config=cfg, risk_engine=RiskEngine())
 
         strategy_factory = _trend_factory
+    elif args.strategy == "range_reversion":
+        strategy_cfg = (
+            range_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else range_get_default_config()
+        )
+
+        def _range_factory(cfg: Any) -> Strategy:
+            return RangeReversionStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _range_factory
+    elif args.strategy == "volume_momentum":
+        strategy_cfg = (
+            vm_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else vm_get_default_config()
+        )
+
+        def _vm_factory(cfg: Any) -> Strategy:
+            return VolumeMomentumStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _vm_factory
+    elif args.strategy == "scalp_meanrev":
+        strategy_cfg = (
+            scalp_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else scalp_get_default_config()
+        )
+
+        def _scalp_factory(cfg: Any) -> Strategy:
+            return ScalpMeanrevStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _scalp_factory
+    elif args.strategy == "smc_liqsweep":
+        strategy_cfg = (
+            smc_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else smc_get_default_config()
+        )
+
+        def _smc_factory(cfg: Any) -> Strategy:
+            return SmcLiqsweepStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _smc_factory
+    elif args.strategy == "edge_hybrid":
+        strategy_cfg = (
+            hybrid_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else hybrid_get_default_config()
+        )
+
+        def _hybrid_factory(cfg: Any) -> Strategy:
+            return EdgeHybridStrategy(config=cfg, risk_engine=RiskEngine())
+
+        strategy_factory = _hybrid_factory
     elif args.strategy == "gold_safety_haven":
         from strategies.gold_safety_haven import (
             get_default_config as gold_get_default_config,

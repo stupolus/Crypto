@@ -72,6 +72,7 @@ data/screener_events/
 data/liquidations/
 data/funding/
 data/oi/
+data/coinglass/
 data/heatmap/
 data/news/
 data/raw/
@@ -103,3 +104,4 @@ htmlcov/
 ops/batch-*.json
 ops/live-*
 ops/walk-forward-*.json
+.last_consumed_sha
