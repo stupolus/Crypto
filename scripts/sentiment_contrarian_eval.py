@@ -168,6 +168,7 @@ def main() -> None:
     for h in _HORIZONS:
         crowd: list[tuple[int, float]] = []
         smart: list[tuple[int, float]] = []
+        trendal: list[tuple[int, float]] = []  # крауд-контр В СТОРОНУ тренда
         for sym in _COINS:
             g = _load(_CG / f"{sym}-glsr-1d.jsonl")
             tp = _load(_CG / f"{sym}-topp-1d.jsonl")
@@ -181,15 +182,23 @@ def main() -> None:
             if diffs:
                 dhi = _quantile(diffs, 1 - _Q)
                 dlo = _quantile(diffs, _Q)
+            cdays = sorted(cl)
             for d in days:
                 fk = d + h * _DAY
                 if d not in cl or fk not in cl:
                     continue
                 fwd = cl[fk] / cl[d] - 1.0
+                # SMA50 строго из ПРОШЛЫХ закрытий (без look-ahead)
+                past = [cl[x] for x in cdays if x < d][-50:]
+                sma = sum(past) / len(past) if len(past) == 50 else None
                 if g[d] >= hi:
                     crowd.append((d, fwd * -1))
+                    if sma is not None and cl[d] < sma:  # толпа лонг + даунтренд
+                        trendal.append((d, fwd * -1))
                 elif g[d] <= lo:
                     crowd.append((d, fwd * +1))
+                    if sma is not None and cl[d] > sma:  # толпа шорт + аптренд
+                        trendal.append((d, fwd * +1))
                 if d in tp and diffs:
                     diff = g[d] - tp[d]
                     if diff >= dhi:  # толпа лонг > умных → шорт
@@ -198,6 +207,7 @@ def main() -> None:
                         smart.append((d, fwd * +1))
         print(f"-- H={h}д --")
         _eval("крауд-контр  ", crowd)
+        _eval("крауд+тренд  ", trendal)
         _eval("smart-vs-dumb", smart)
     print("=" * 66)
     print("«РЕАЛЬНЫЙ+» = OOS-гейт И WF≥3/4 на всех cost. Иначе шум.")
