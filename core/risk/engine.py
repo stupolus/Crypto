@@ -25,6 +25,8 @@ _HUNDRED = Decimal("100")
 
 
 def _risk_pct(config: RiskConfig, tier: RiskTier) -> Decimal:
+    if tier == RiskTier.SCALP:
+        return Decimal(str(config.risk_pct.SCALP))
     if tier == RiskTier.B:
         return Decimal(str(config.risk_pct.B))
     if tier == RiskTier.A:
@@ -69,6 +71,12 @@ class RiskEngine:
         breaker = self._circuit_breakers(inputs)
         if breaker is not None:
             return breaker
+
+        # SCALP-профиль: backtest-gate + fee-edge-gate + лимиты частоты.
+        if inputs.tier == RiskTier.SCALP:
+            scalp_reject = self._scalp_gates(inputs)
+            if scalp_reject is not None:
+                return scalp_reject
 
         # Размер позиции.
         risk_pct = _risk_pct(cfg, inputs.tier)
@@ -169,6 +177,70 @@ class RiskEngine:
                         "threshold": format(monthly_threshold, "f"),
                     },
                 )
+        return None
+
+    def _scalp_gates(self, inputs: RiskInputs) -> RiskRejection | None:
+        """Гейты, специфичные для SCALP-профиля.
+
+        1. backtest-gate: пока `scalp.enabled=false` — скальп запрещён
+           (включается только после зелёного бэктеста, план 22.4).
+        2. fee-edge-gate: TP должен покрывать трение с запасом
+           (`TP% >= k × trade_cost%`), иначе edge съедается комиссией.
+        3. лимиты частоты: число скальп-сделок/позиций.
+        Все числа — `бизнес/риск-профиль.md` / `правила-скальпинга.md`.
+        """
+        scfg = self._config.scalp
+
+        if not scfg.enabled:
+            return RiskRejection(
+                code=RejectionCode.SCALP_DISABLED,
+                reason=(
+                    "SCALP отключён (scalp.enabled=false). Включается после "
+                    "зелёного бэктеста — план 22.4 / правила-скальпинга.md"
+                ),
+            )
+
+        if inputs.scalp_trades_today >= scfg.max_scalp_trades_day:
+            return RiskRejection(
+                code=RejectionCode.SCALP_TRADES_LIMIT,
+                reason=(
+                    f"scalp_trades_today {inputs.scalp_trades_today} >= max "
+                    f"{scfg.max_scalp_trades_day}"
+                ),
+                details={"scalp_trades_today": str(inputs.scalp_trades_today)},
+            )
+
+        if inputs.scalp_positions_open >= scfg.max_scalp_positions:
+            return RiskRejection(
+                code=RejectionCode.SCALP_POSITIONS_LIMIT,
+                reason=(
+                    f"scalp_positions_open {inputs.scalp_positions_open} >= max "
+                    f"{scfg.max_scalp_positions}"
+                ),
+                details={"scalp_positions_open": str(inputs.scalp_positions_open)},
+            )
+
+        if inputs.take_profit_price is None:
+            return RiskRejection(
+                code=RejectionCode.SCALP_NO_EDGE,
+                reason="SCALP требует take_profit_price для fee-edge-gate",
+            )
+
+        tp_distance = abs(inputs.take_profit_price - inputs.entry_price)
+        tp_pct = (tp_distance / inputs.entry_price) * _HUNDRED
+        required = Decimal(str(scfg.fee_edge_k)) * Decimal(str(scfg.trade_cost_pct))
+        if tp_pct < required:
+            return RiskRejection(
+                code=RejectionCode.SCALP_NO_EDGE,
+                reason=(
+                    f"tp {tp_pct:.4f}% < required {required}% "
+                    f"(k={scfg.fee_edge_k} × trade_cost={scfg.trade_cost_pct}%)"
+                ),
+                details={
+                    "tp_pct": format(tp_pct, "f"),
+                    "required_pct": format(required, "f"),
+                },
+            )
         return None
 
     def _check_liquidation_buffer(
