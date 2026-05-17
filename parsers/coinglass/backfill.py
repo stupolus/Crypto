@@ -93,6 +93,9 @@ _SYMBOL_MAP: dict[str, tuple[str, str, str]] = {
     "BTC-USDT": ("Binance", "BTCUSDT", "BTC"),
     "ETH-USDT": ("Binance", "ETHUSDT", "ETH"),
     "SOL-USDT": ("Binance", "SOLUSDT", "SOL"),
+    "DOGE-USDT": ("Binance", "DOGEUSDT", "DOGE"),
+    "XRP-USDT": ("Binance", "XRPUSDT", "XRP"),
+    "BNB-USDT": ("Binance", "BNBUSDT", "BNB"),
     "ADA-USDT": ("Binance", "ADAUSDT", "ADA"),
     "HYPE-USDT": ("Binance", "HYPEUSDT", "HYPE"),
 }
