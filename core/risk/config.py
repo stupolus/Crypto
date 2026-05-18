@@ -31,6 +31,7 @@ class LimitsConfig(_StrictModel):
     max_effective_leverage: float = Field(gt=0, le=125)
     stop_min_pct: float = Field(gt=0, lt=100)
     liquidation_buffer_ratio: float = Field(gt=0, lt=1)
+    maintenance_margin_rate: float = Field(gt=0, lt=1)
 
 
 class ScalpConfig(_StrictModel):

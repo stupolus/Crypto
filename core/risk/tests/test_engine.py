@@ -68,6 +68,7 @@ def _scalp_engine(*, enabled: bool = True) -> RiskEngine:
                 "max_effective_leverage": 10,
                 "stop_min_pct": 0.15,
                 "liquidation_buffer_ratio": 0.3,
+                "maintenance_margin_rate": 0.01,
             },
             "circuit_breakers": {
                 "daily_loss_pct": -5.0,
@@ -213,6 +214,7 @@ def test_reject_leverage_over_cap() -> None:
                 "max_effective_leverage": 5,
                 "stop_min_pct": 0.5,
                 "liquidation_buffer_ratio": 0.3,
+                "maintenance_margin_rate": 0.01,
             },
             "circuit_breakers": {
                 "daily_loss_pct": -5.0,
