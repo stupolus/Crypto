@@ -25,10 +25,18 @@ from adapters.bingx.settings import BingXSettings
 _INDEX = "%5ENDX"
 _PERP = "NCSINASDAQ1002USD-USDT"
 _SMA = 200
-_RISK = Decimal("0.01")  # риск/сделку 1% эквити (CLAUDE.md Принцип 2)
-_MAX_LEV = Decimal("5")  # потолок плеча (CLAUDE.md)
+_RISK = Decimal("0.01")  # B-tier 1.0% эквити (бизнес/риск-профиль.md)
+_MAX_LEV = Decimal("3")  # B-tier потолок плеча (бизнес/риск-профиль.md;
+#                          5x — только A+/абсолютный, не для Faber B-tier)
 _TOL = Decimal("0.15")  # |факт−target|/target < 15% → уже в target
 _LOG = Path("ops/faber_vst.jsonl")
+_HALT = Path("ops/faber_HALT")  # kill-switch: файл есть → не торгуем
+
+
+def is_halted() -> bool:
+    """Kill-switch: наличие ops/faber_HALT → НИ ОДНОГО ордера
+    (биржевой стоп открытой позиции продолжает защищать)."""
+    return _HALT.exists()
 
 
 def _signal() -> tuple[str, float, float]:
@@ -85,6 +93,12 @@ async def _run(dry: bool) -> None:
     s = BingXSettings()
     if s.env != "vst":  # defense-in-depth поверх конфиг-изоляции
         print(f"STOP: BINGX_ENV={s.env!r} != 'vst'. Только demo. Не live.")
+        return
+    if is_halted():
+        _log({"date": datetime.now(tz=UTC).strftime("%Y-%m-%d"),
+              "ts": int(time.time()), "action": "HALTED",
+              "reason": f"{_HALT} существует — kill-switch"})  # fmt: skip
+        print(f"HALTED: {_HALT} существует. Ордеров нет (стоп позиции жив).")
         return
     sig, idx_c, sma = _signal()
     pp = _perp_price()

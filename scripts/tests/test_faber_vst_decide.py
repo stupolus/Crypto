@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from scripts.faber_vst_executor import decide
+from scripts import faber_vst_executor
+from scripts.faber_vst_executor import decide, is_halted
 
 
 def test_cash_flat_noop() -> None:
@@ -28,3 +29,11 @@ def test_long_within_tolerance_noop() -> None:
 def test_long_out_of_tolerance_rebalance() -> None:
     # |6 - 3| / 3 = 100% → ребаланс
     assert decide("LONG", Decimal("6"), Decimal("3")) == "rebalance"
+
+
+def test_kill_switch(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    halt = tmp_path / "faber_HALT"
+    monkeypatch.setattr(faber_vst_executor, "_HALT", halt)
+    assert is_halted() is False
+    halt.write_text("stop")
+    assert is_halted() is True
