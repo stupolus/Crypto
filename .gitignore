@@ -105,3 +105,4 @@ ops/batch-*.json
 ops/live-*
 ops/walk-forward-*.json
 .last_consumed_sha
+ops/faber_demo.jsonl
