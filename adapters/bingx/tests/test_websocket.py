@@ -201,7 +201,7 @@ async def test_subscribe_raises_when_ack_indicates_failure(cfg: BingXConfig) -> 
 
     ws = BingXMarketWebSocket(cfg, connect_factory=factory)  # type: ignore[arg-type]
     await ws.connect()
-    with pytest.raises(WebSocketError, match="subscribe to .* failed"):
+    with pytest.raises(WebSocketError, match=r"subscribe to .* failed"):
         await ws.subscribe("BTC-USDT@kline_1min")
     await ws.disconnect()
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from decimal import Decimal
-from typing import TypeVar
 
 from core.signals import (
     StaticDeltaProvider,
@@ -41,17 +40,15 @@ _INTERVAL_MS: dict[str, int] = {
 }
 _MAX_LIMIT = 1000
 
-_T = TypeVar("_T")
 
-
-def _paginate(
-    fetch: Callable[[int, int], list[_T]],
+def _paginate[T](
+    fetch: Callable[[int, int], list[T]],
     *,
     start_ms: int,
     end_ms: int,
     interval_ms: int,
-    ts_of: Callable[[_T], int],
-) -> list[_T]:
+    ts_of: Callable[[T], int],
+) -> list[T]:
     """Окно-цикл: Coinglass отдаёт ≤1000 точек/запрос. Идём от start_ms
     вперёд окнами по 1000 баров, склеиваем, дедуп по ts.
 
@@ -59,7 +56,7 @@ def _paginate(
     план не активен) — защита от бесконечного цикла.
     """
     window_ms = _MAX_LIMIT * interval_ms
-    seen: dict[int, _T] = {}
+    seen: dict[int, T] = {}
     cursor = start_ms
     guard = 0
     consecutive_empty = 0

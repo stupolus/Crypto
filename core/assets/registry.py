@@ -16,11 +16,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 
-class AssetClass(str, Enum):
+class AssetClass(StrEnum):
     """Категория инструмента."""
 
     CRYPTO = "crypto"

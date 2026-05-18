@@ -20,7 +20,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 import httpx
 
@@ -42,13 +42,13 @@ _BEAR_WINRATE = 0.40
 _REGIME_SMA_MONTHS = 10  # ≈200 торговых дней
 
 
-class MonthBias(str, Enum):
+class MonthBias(StrEnum):
     BULL = "BULL"
     BEAR = "BEAR"
     NEUTRAL = "NEUTRAL"
 
 
-class MarketRegime(str, Enum):
+class MarketRegime(StrEnum):
     RISK_ON = "RISK_ON"
     RISK_OFF = "RISK_OFF"
     UNKNOWN = "UNKNOWN"

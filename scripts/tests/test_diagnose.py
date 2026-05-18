@@ -22,7 +22,7 @@ from scripts.diagnose import (
 
 def test_check_env_file_present() -> None:
     """Проверяем что .env файл найден (если есть в репо)."""
-    ok, msg = _check_env_file()
+    _ok, msg = _check_env_file()
     # В CI .env может отсутствовать — оба исхода валидные, проверяем формат.
     assert "✓" in msg or "✗" in msg
 
@@ -105,13 +105,13 @@ def test_check_outcomes_db_with_data(tmp_path: Path) -> None:
 
 def test_check_anthropic_when_configured() -> None:
     """Если .env есть в репо с реальным ключом — тест работает."""
-    ok, msg = _check_anthropic()
+    _ok, msg = _check_anthropic()
     # Просто проверяем формат — флаг зависит от env
     assert "ANTHROPIC" in msg
 
 
 def test_check_bingx_returns_status() -> None:
-    ok, msg = _check_bingx()
+    _ok, msg = _check_bingx()
     # Зависит от .env; проверяем что вернулся валидный ответ
     assert "BingX" in msg or "BINGX" in msg
 

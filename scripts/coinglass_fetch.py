@@ -16,7 +16,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import TypeVar
 
 from parsers.coinglass.backfill import map_symbol
 from parsers.coinglass.client import CoinglassClient
@@ -31,11 +30,10 @@ _DAY = 86_400_000
 _SPECS = [("1d", 1000), ("4h", 160)]
 _PAUSE = 4.0  # сек между вызовами — HOBBYIST rate-limit
 
-T = TypeVar("T")
 _Point = tuple[int, Decimal]
 
 
-def _span(rows: list[T], ts_of: Callable[[T], int]) -> str:
+def _span[T](rows: list[T], ts_of: Callable[[T], int]) -> str:
     if not rows:
         return "ПУСТО"
     lo, hi = ts_of(rows[0]), ts_of(rows[-1])

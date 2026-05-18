@@ -183,7 +183,7 @@ async def _run(dry: bool) -> None:
                     entry_price=pp_d,
                     stop_price=stop_px,
                     tier=RiskTier.B,
-                )  # fmt: skip
+                )
             )
             if isinstance(decision, RiskRejection):
                 reject = f"{decision.code}: {decision.reason}"
