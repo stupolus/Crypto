@@ -106,3 +106,5 @@ ops/live-*
 ops/walk-forward-*.json
 .last_consumed_sha
 ops/faber_demo.jsonl
+data/eia/
+ops/faber_demo_cron.log
