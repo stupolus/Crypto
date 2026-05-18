@@ -19,6 +19,7 @@ import json
 import time
 import urllib.parse
 import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,11 @@ _UA = "Mozilla/5.0 (compatible; crypto-bot/1.0)"
 
 def _slug(symbol: str) -> str:
     return symbol.lstrip("^").lower().replace(".", "-")
+
+
+def _year_to_epoch(year: int) -> int:
+    """1 января `year` 00:00 UTC → epoch-секунды."""
+    return int(datetime(year, 1, 1, tzinfo=UTC).timestamp())
 
 
 def parse_chart_payload(payload: dict[str, Any], symbol: str) -> list[dict[str, str | int]]:
@@ -69,10 +75,15 @@ def parse_chart_payload(payload: dict[str, Any], symbol: str) -> list[dict[str, 
     return rows
 
 
-def fetch_yahoo_daily(symbol: str) -> list[dict[str, str | int]]:
-    """Тянет дневную историю символа с Yahoo и парсит её."""
+def fetch_yahoo_daily(symbol: str, start_year: int | None = None) -> list[dict[str, str | int]]:
+    """Тянет дневную историю символа с Yahoo и парсит её.
+
+    ``start_year`` — если задан, история с 1 января этого года (иначе
+    с начала доступной, как раньше — без регрессии).
+    """
     now = int(time.time())
-    qs = urllib.parse.urlencode({"period1": 0, "period2": now, "interval": "1d"})
+    period1 = _year_to_epoch(start_year) if start_year is not None else 0
+    qs = urllib.parse.urlencode({"period1": period1, "period2": now, "interval": "1d"})
     url = f"{_CHART_URL.format(sym=urllib.parse.quote(symbol))}?{qs}"
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=30) as resp:
@@ -89,12 +100,18 @@ def main() -> None:
         default=None,
         help="Путь jsonl (default: data/candles/<slug>-1d.jsonl)",
     )
+    parser.add_argument(
+        "--start-year",
+        type=int,
+        default=None,
+        help="История с 1 января этого года (default: вся доступная)",
+    )
     args = parser.parse_args()
 
     out = args.out or Path("data/candles") / f"{_slug(args.symbol)}-1d.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    rows = fetch_yahoo_daily(args.symbol)
+    rows = fetch_yahoo_daily(args.symbol, args.start_year)
     with out.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, separators=(",", ":")) + "\n")

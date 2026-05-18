@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from adapters.bingx.models import Kline
-from scripts.download_equity import _slug, parse_chart_payload
+from scripts.download_equity import _slug, _year_to_epoch, parse_chart_payload
 
 _PAYLOAD = {
     "chart": {
@@ -54,3 +54,10 @@ def test_slug() -> None:
     assert _slug("^GSPC") == "gspc"
     assert _slug("AAPL") == "aapl"
     assert _slug("BRK.B") == "brk-b"
+
+
+def test_year_to_epoch() -> None:
+    # 1970-01-01 UTC = epoch 0.
+    assert _year_to_epoch(1970) == 0
+    # 2005-01-01 00:00 UTC.
+    assert _year_to_epoch(2005) == 1104537600
