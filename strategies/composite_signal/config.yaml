@@ -15,6 +15,10 @@ liq_spike_min: 3.0             # recent/baseline ≥ 3×
 liq_min_baseline_usd: 50000
 liq_baseline_n: 20
 
+# CVD order-flow (3-й голос, план 35). threshold = дефолт детектора.
+cvd_lookback: 12
+order_flow_threshold: 0.6
+
 # OI-gate: подтверждение направления.
 oi_lookback: 12
 oi_rise_pct: 2.0

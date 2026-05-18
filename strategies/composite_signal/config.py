@@ -37,6 +37,10 @@ class CompositeConfig(_Strict):
     liq_min_baseline_usd: float = Field(ge=0)
     liq_baseline_n: int = Field(gt=0)
 
+    # CVD order-flow детектор (3-й голос — план 35).
+    cvd_lookback: int = Field(gt=0)
+    order_flow_threshold: float = Field(gt=0, lt=1)
+
     # OI-gate (подтверждение направления, не голос).
     oi_lookback: int = Field(gt=0)
     oi_rise_pct: float = Field(gt=0)

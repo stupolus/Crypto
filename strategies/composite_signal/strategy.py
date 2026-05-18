@@ -28,6 +28,7 @@ from adapters.bingx.private_models import OrderRequest, OrderSide
 from core.backtest import FillEvent, StrategyContext
 from core.risk import RiskApproval, RiskEngine, RiskInputs, RiskRejection, Side
 from core.signals import (
+    DeltaProvider,
     FundingExtremeConfig,
     FundingExtremeSignal,
     FundingProvider,
@@ -37,6 +38,9 @@ from core.signals import (
     OIState,
     OpenInterestConfig,
     OpenInterestProvider,
+    OrderFlowConfig,
+    OrderFlowSignal,
+    StaticDeltaProvider,
     StaticFundingProvider,
     StaticLiquidationProvider,
     StaticOpenInterestProvider,
@@ -45,6 +49,7 @@ from core.signals import (
     detect_funding_extreme,
     detect_liquidation_sweep,
     detect_oi_trend,
+    detect_order_flow,
 )
 from strategies.composite_signal.config import CompositeConfig
 
@@ -71,12 +76,14 @@ class CompositeSignalStrategy:
         funding_provider: FundingProvider | None = None,
         liquidation_provider: LiquidationProvider | None = None,
         oi_provider: OpenInterestProvider | None = None,
+        delta_provider: DeltaProvider | None = None,
     ) -> None:
         self._cfg = config
         self._risk = risk_engine
         self._funding = funding_provider or StaticFundingProvider()
         self._liq = liquidation_provider or StaticLiquidationProvider()
         self._oi = oi_provider or StaticOpenInterestProvider()
+        self._delta = delta_provider or StaticDeltaProvider()
 
         self._state = _State.FLAT
         self._pending_coid: str | None = None
@@ -114,12 +121,13 @@ class CompositeSignalStrategy:
 
         funding_sig = self._funding_signal(cur_funding)
         liq_sig = self._liquidation_signal(ts)
+        of_sig = self._order_flow_signal(ts)
 
         result = aggregate_extended_signals(
             symbol=self._cfg.symbol,
             timestamp_ms=ts,
             funding_signal=funding_sig,
-            order_flow_signal=None,  # нет провайдера bid/ask
+            order_flow_signal=of_sig,
             liquidation_signal=liq_sig,
         )
         if result.candidate is None:
@@ -214,6 +222,23 @@ class CompositeSignalStrategy:
                 min_baseline=Decimal(str(self._cfg.liq_min_baseline_usd)),
                 min_history=self._cfg.liq_baseline_n,
             ),
+        )
+
+    def _order_flow_signal(self, ts: int) -> OrderFlowSignal | None:
+        cvd = self._delta.get_cvd_series(self._cfg.symbol, ts, self._cfg.cvd_lookback)
+        if len(cvd) < 2:
+            return None
+        # CVD кумулятивен: per-bar приращения → buy/sell давление.
+        buy = Decimal("0")
+        sell = Decimal("0")
+        for i in range(1, len(cvd)):
+            d = cvd[i] - cvd[i - 1]
+            if d > 0:
+                buy += d
+            else:
+                sell += -d
+        return detect_order_flow(
+            buy, sell, OrderFlowConfig(threshold=Decimal(str(self._cfg.order_flow_threshold)))
         )
 
     def _oi_gate_passes(self, side: OrderSide, ts: int) -> bool:

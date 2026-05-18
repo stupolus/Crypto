@@ -42,7 +42,7 @@ class _FakeCG:
 
 
 def test_build_providers_wires_funding_from_fake_client() -> None:
-    funding, liq, oi = build_providers(
+    funding, liq, oi, delta = build_providers(
         "BTC-USDT",
         "7m",  # не в _INTERVAL_MS → single-shot, без пагинации
         start_ms=0,
@@ -51,13 +51,14 @@ def test_build_providers_wires_funding_from_fake_client() -> None:
     )
     assert funding.get_funding_rate("BTC-USDT", 1500) == Decimal("0.0001")
     assert funding.get_funding_rate("BTC-USDT", 5000) == Decimal("0.0009")
-    # liq/oi провайдеры построены (не падает на доступе).
+    # liq/oi/delta провайдеры построены (не падает на доступе).
     assert liq is not None
     assert oi is not None
+    assert delta is not None
 
 
 def test_build_providers_unmapped_symbol_empty_funding() -> None:
-    funding, _liq, _oi = build_providers(
+    funding, _liq, _oi, _delta = build_providers(
         "UNKNOWN-USDT",
         "7m",
         start_ms=0,

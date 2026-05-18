@@ -30,6 +30,8 @@ def _cfg(**ov: object) -> CompositeConfig:
         "liq_spike_min": 3.0,
         "liq_min_baseline_usd": 10.0,
         "liq_baseline_n": 3,
+        "cvd_lookback": 5,
+        "order_flow_threshold": 0.6,
         "oi_lookback": 3,
         "oi_rise_pct": 3.0,
         "oi_fall_pct": 3.0,
@@ -81,6 +83,18 @@ class _Liq:
 
     def get_baseline(self, symbol: str, timestamp_ms: int, n: int) -> list[LiquidationBucket]:
         return [LiquidationBucket(long_volume=Decimal("20"), short_volume=Decimal("20"))] * n
+
+
+class _Delta:
+    """CVD с сильным восходящим давлением (buy) только на триггере → BUY."""
+
+    def __init__(self, trig_ts: int) -> None:
+        self._trig = trig_ts
+
+    def get_cvd_series(self, symbol: str, timestamp_ms: int, n: int) -> list[Decimal]:
+        if timestamp_ms < self._trig:
+            return []
+        return [Decimal(i * 100) for i in range(n)]  # монотонный рост → buy≫sell
 
 
 class _OI:
@@ -142,6 +156,22 @@ def test_consensus_buy_with_oi_gate_emits_order() -> None:
     assert order.attached_take_profit is not None
     assert order.attached_stop_loss is not None
     assert order.attached_take_profit > order.attached_stop_loss
+
+
+def test_cvd_as_third_signal_forms_consensus() -> None:
+    """funding молчит, но liq BUY + CVD order-flow BUY = 2-of-3 → ордер."""
+    trig = 8 * _STEP
+    s = CompositeSignalStrategy(
+        _cfg(),
+        RiskEngine(),
+        funding_provider=None,  # Static → funding None (молчит)
+        liquidation_provider=_Liq(trig),
+        oi_provider=_OI(rising=True),
+        delta_provider=_Delta(trig),
+    )
+    order = _run(s, 9, trig)
+    assert order is not None
+    assert order.side == "BUY"
 
 
 def test_consensus_blocked_by_oi_gate() -> None:

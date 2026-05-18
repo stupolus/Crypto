@@ -49,10 +49,10 @@ def build_providers(
     start_ms: int,
     end_ms: int,
     client: CoinglassClient | None = None,
-) -> tuple[TsFundingProvider, object, object]:
-    """(funding, liquidation, oi) из Coinglass-истории."""
+) -> tuple[TsFundingProvider, object, object, object]:
+    """(funding, liquidation, oi, delta) из Coinglass-истории."""
     cg = client or CoinglassClient()
-    liq, oi, _delta = backfill_providers(
+    liq, oi, delta = backfill_providers(
         symbol, interval, start_time_ms=start_ms, end_time_ms=end_ms, client=cg
     )
     mapping = map_symbol(symbol)
@@ -66,7 +66,7 @@ def build_providers(
             start_time_ms=start_ms,
             end_time_ms=end_ms,
         )
-    return TsFundingProvider(funding_rows), liq, oi
+    return TsFundingProvider(funding_rows), liq, oi, delta
 
 
 def _has_data(funding: TsFundingProvider) -> bool:
@@ -92,9 +92,16 @@ def main() -> None:
         raise SystemExit("no candles")
     end_ms = candles[-1].open_time_ms
     start_ms = end_ms - args.months * 30 * _DAY_MS
-    print(f"composite_backtest {args.symbol} {args.interval}: {len(candles)} candles")
+    # Бэктест ТОЛЬКО на окне, где есть провайдер-данные — иначе свечи
+    # вне Coinglass-истории дают 0 сделок и вырожденный sample.
+    candles = [c for c in candles if start_ms <= c.open_time_ms <= end_ms]
+    if not candles:
+        raise SystemExit("no candles within provider window")
+    print(f"composite_backtest {args.symbol} {args.interval}: {len(candles)} candles in window")
 
-    funding, liq, oi = build_providers(args.symbol, args.interval, start_ms=start_ms, end_ms=end_ms)
+    funding, liq, oi, delta = build_providers(
+        args.symbol, args.interval, start_ms=start_ms, end_ms=end_ms
+    )
     if not _has_data(funding):
         raise SystemExit(
             "Coinglass вернул пусто (нет COINGLASS_API_KEY / план не активен). "
@@ -112,6 +119,7 @@ def main() -> None:
             funding_provider=funding,
             liquidation_provider=liq,  # type: ignore[arg-type]
             oi_provider=oi,  # type: ignore[arg-type]
+            delta_provider=delta,  # type: ignore[arg-type]
         )
 
     if args.split_fraction is None:
