@@ -37,7 +37,10 @@ class LiqReversalConfig(_Strict):
     # Цикл ликвидаций: ждать N свечей после sweep до входа.
     cycle_wait_bars: int = Field(ge=0)
 
-    # OI gate.
+    # OI gate. ``oi_gate_enabled=False`` полностью отключает gate
+    # направления (для сред без исторического OI). По умолчанию True —
+    # поведение не меняется для существующих конфигов.
+    oi_gate_enabled: bool = True
     oi_lookback: int = Field(gt=0)
     oi_rise_pct: float = Field(gt=0)
     oi_fall_pct: float = Field(gt=0)

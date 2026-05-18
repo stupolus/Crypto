@@ -247,6 +247,8 @@ class LiquidationReversalStrategy:
         )
 
     def _oi_gate_passes(self, side: OrderSide, ts: int) -> bool:
+        if not self._cfg.oi_gate_enabled:
+            return True
         series = self._oi.get_series(self._cfg.symbol, ts, self._cfg.oi_lookback * 4)
         oi_cfg = OpenInterestConfig(
             rise_pct=Decimal(str(self._cfg.oi_rise_pct)),

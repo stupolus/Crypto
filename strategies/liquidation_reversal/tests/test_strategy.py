@@ -285,6 +285,57 @@ def test_a2_short_passes_on_falling_oi() -> None:
     assert order.side == "SELL"
 
 
+def test_oi_gate_disabled_allows_short_despite_rising_oi() -> None:
+    """oi_gate_enabled=False → шорт проходит даже при растущем OI."""
+    n = 7
+    hist = _history(n)
+    trig_ts = n * _STEP
+    trigger = _k(trig_ts, "100", "112", "100", "110")
+    confirm_ts = (n + 1) * _STEP
+    confirm = _k(confirm_ts, "110", "111", "108", "109")
+    liq = StaticLiquidationProvider(
+        {
+            "BTC-USDT": {
+                trig_ts - 3 * _STEP: _bucket("0", "100"),
+                trig_ts - 2 * _STEP: _bucket("0", "100"),
+                trig_ts - _STEP: _bucket("0", "100"),
+                trig_ts: _bucket("0", "50000"),
+            }
+        }
+    )
+    oi_rising = StaticOpenInterestProvider({"BTC-USDT": _oi_rising(confirm_ts)})
+    delta = StaticDeltaProvider(
+        {"BTC-USDT": [(confirm_ts - 3 * _STEP, Decimal("5")), (confirm_ts, Decimal("-20"))]}
+    )
+    fund = StaticFundingProvider({"BTC-USDT": Decimal("0.0")})
+    s = LiquidationReversalStrategy(
+        _cfg(oi_gate_enabled=False),
+        RiskEngine(),
+        liquidation_provider=liq,
+        oi_provider=oi_rising,
+        delta_provider=delta,
+        funding_provider=fund,
+    )
+    s.on_candle_close(
+        StrategyContext(
+            current_candle=trigger,
+            history=(*hist, trigger),
+            equity=Decimal("10000"),
+            open_position=None,
+        )
+    )
+    order = s.on_candle_close(
+        StrategyContext(
+            current_candle=confirm,
+            history=(*hist, trigger, confirm),
+            equity=Decimal("10000"),
+            open_position=None,
+        )
+    )
+    assert order is not None
+    assert order.side == "SELL"
+
+
 def test_no_sweep_no_setup() -> None:
     """Нет ликвидаций → нет setup, нет ордера."""
     n = 7
