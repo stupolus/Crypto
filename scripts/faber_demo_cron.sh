@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Faber demo paper-runner — ежедневный запуск (план 40.3).
-# PAPER-only: без реальных ордеров и торговых ключей.
-# Идемпотентен: повторный запуск в тот же день — no-op.
-# Лог: ops/faber_demo.jsonl (в .gitignore, копится ≥4 нед).
+# Faber VST demo-исполнитель — ежедневно (план 41.3). НЕ LIVE.
+# Hard-guard BINGX_ENV=vst в коде. Идемпотентно (реконсил от
+# факт. позиции). Ошибки/действия → ops/faber_vst.jsonl.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-.venv/bin/python -m scripts.faber_demo_runner >> ops/faber_demo_cron.log 2>&1
+.venv/bin/python -m scripts.faber_vst_executor >> ops/faber_vst_cron.log 2>&1

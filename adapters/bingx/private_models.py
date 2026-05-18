@@ -138,6 +138,13 @@ class Order(_StrictModel):
     update_time_ms: int = Field(alias="updateTime")
     reduce_only: bool | None = Field(default=None, alias="reduceOnly")
 
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _coerce_order_id_to_str(cls, v: object) -> str:
+        # BingX отдаёт orderId как int (snowflake) — кастуем в str
+        # (тот же фикс, что у Order/OrderAck; баг найден на demo VST).
+        return str(v)
+
     @field_validator("symbol")
     @classmethod
     def _check_hyphen(cls, v: str) -> str:
