@@ -22,7 +22,15 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 
-_UNIV = {"GC=F": "Gold", "HG=F": "Copper", "CL=F": "WTI Oil", "JPY=X": "USDJPY"}
+_UNIV = {
+    "GC=F": "Gold",
+    "SI=F": "Silver",
+    "HG=F": "Copper",
+    "CL=F": "WTI Oil",
+    "JPY=X": "USDJPY",
+    "GOOGL": "Alphabet",
+    "AAPL": "Apple",
+}
 _COST = 0.0005
 
 
