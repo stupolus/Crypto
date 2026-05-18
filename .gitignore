@@ -111,3 +111,6 @@ ops/faber_demo_cron.log
 ops/faber_vst.jsonl
 ops/faber_vst_cron.log
 ops/faber_vst_state.json
+
+# yt_transcripts scratch (expiring signed URLs, regenerable)
+scripts/yt_transcripts/work/

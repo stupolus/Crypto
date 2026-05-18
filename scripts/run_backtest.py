@@ -20,6 +20,7 @@ from typing import Any
 from adapters.bingx.models import Kline
 from core.backtest import BacktestEngine, BacktestResult, Strategy, load_config
 from core.risk import RiskEngine
+from core.risk import load_config as risk_load_config
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
 from strategies.btc_breakout.config import load_config as load_strategy_config
 from strategies.edge_hybrid import (
@@ -185,7 +186,22 @@ def main() -> None:
         default=Path("ops"),
         help="Где сохранить JSON-результат",
     )
+    parser.add_argument(
+        "--risk-config",
+        type=Path,
+        default=None,
+        help=(
+            "Альтернативный risk-config (например с scalp.enabled=true для "
+            "скальп-бэктеста). Без флага — дефолтный core/risk/config.yaml."
+        ),
+    )
     args = parser.parse_args()
+
+    risk_engine = RiskEngine(
+        risk_load_config(args.risk_config) if args.risk_config is not None else None
+    )
+    if args.risk_config is not None:
+        print(f"  Risk config override: {args.risk_config}")
 
     if not args.candles.exists():
         raise SystemExit(
@@ -211,7 +227,7 @@ def main() -> None:
         )
 
         def _us_factory(cfg: Any) -> Strategy:
-            return UsSessionBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+            return UsSessionBreakoutStrategy(config=cfg, risk_engine=risk_engine)
 
         strategy_factory = _us_factory
     elif args.strategy == "trend_ema_4h":
@@ -222,7 +238,7 @@ def main() -> None:
         )
 
         def _trend_factory(cfg: Any) -> Strategy:
-            return TrendEmaStrategy(config=cfg, risk_engine=RiskEngine())
+            return TrendEmaStrategy(config=cfg, risk_engine=risk_engine)
 
         strategy_factory = _trend_factory
     elif args.strategy == "range_reversion":
@@ -295,7 +311,7 @@ def main() -> None:
         )
 
         def _gold_factory(cfg: Any) -> Strategy:
-            return BtcBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+            return BtcBreakoutStrategy(config=cfg, risk_engine=risk_engine)
 
         strategy_factory = _gold_factory
     elif args.strategy == "oil_eia_avoid":
@@ -318,7 +334,7 @@ def main() -> None:
         def _oil_factory(cfg: Any) -> Strategy:
             return BtcBreakoutStrategy(
                 config=cfg,
-                risk_engine=RiskEngine(),
+                risk_engine=risk_engine,
                 news_calendar=build_eia_news_calendar(),
             )
 
@@ -343,7 +359,7 @@ def main() -> None:
         def _stock_factory(cfg: Any) -> Strategy:
             return BtcBreakoutStrategy(
                 config=cfg,
-                risk_engine=RiskEngine(),
+                risk_engine=risk_engine,
                 news_calendar=build_earnings_blackout_calendar(cfg.symbol),
             )
 
@@ -383,7 +399,7 @@ def main() -> None:
         def _liqrev_factory(cfg: Any) -> Strategy:
             return LiquidationReversalStrategy(
                 config=cfg,
-                risk_engine=RiskEngine(),
+                risk_engine=risk_engine,
                 liquidation_provider=_liq_p,
                 oi_provider=_oi_p,
                 delta_provider=_delta_p,
@@ -398,7 +414,7 @@ def main() -> None:
         )
 
         def _btc_factory(cfg: Any) -> Strategy:
-            return BtcBreakoutStrategy(config=cfg, risk_engine=RiskEngine())
+            return BtcBreakoutStrategy(config=cfg, risk_engine=risk_engine)
 
         strategy_factory = _btc_factory
     if args.symbol is not None:

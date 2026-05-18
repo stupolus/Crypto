@@ -21,6 +21,7 @@ class _StrictModel(BaseModel):
 
 
 class RiskPctConfig(_StrictModel):
+    SCALP: float = Field(gt=0, le=10)
     B: float = Field(gt=0, le=10)
     A: float = Field(gt=0, le=10)
     A_PLUS: float = Field(gt=0, le=10)
@@ -30,6 +31,17 @@ class LimitsConfig(_StrictModel):
     max_effective_leverage: float = Field(gt=0, le=125)
     stop_min_pct: float = Field(gt=0, lt=100)
     liquidation_buffer_ratio: float = Field(gt=0, lt=1)
+
+
+class ScalpConfig(_StrictModel):
+    # Backtest-gate: пока False — SCALP-сетапы отклоняются движком.
+    # Включается только после зелёного бэктеста (план 22.4) + явного «да».
+    enabled: bool
+    # TP скальпа должен покрывать трение с запасом: TP% >= k × trade_cost%.
+    fee_edge_k: float = Field(ge=1)
+    trade_cost_pct: float = Field(gt=0, lt=100)
+    max_scalp_positions: int = Field(gt=0)
+    max_scalp_trades_day: int = Field(gt=0)
 
 
 class CircuitBreakersConfig(_StrictModel):
@@ -44,6 +56,7 @@ class RiskConfig(_StrictModel):
     risk_pct: RiskPctConfig
     limits: LimitsConfig
     circuit_breakers: CircuitBreakersConfig
+    scalp: ScalpConfig
 
 
 class RiskConfigError(Exception):
