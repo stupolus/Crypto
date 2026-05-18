@@ -92,6 +92,13 @@ def _build_strategy(name: str, risk: RiskEngine, config_path: Path | None = None
     if name == "trend_ema_4h":
         trend_cfg = trend_load_config(config_path) if config_path else trend_get_default_config()
         return TrendEmaStrategy(config=trend_cfg, risk_engine=risk)
+    if name == "composite_signal":
+        from strategies.composite_signal import CompositeSignalStrategy
+        from strategies.composite_signal import get_default_config as comp_default
+        from strategies.composite_signal.config import load_config as comp_load
+
+        comp_cfg = comp_load(config_path) if config_path else comp_default()
+        return CompositeSignalStrategy(config=comp_cfg, risk_engine=risk)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -215,7 +222,7 @@ def main() -> None:
     parser.add_argument("--candles", type=Path, required=True)
     parser.add_argument(
         "--strategy",
-        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h"],
+        choices=["btc_breakout", "us_session_breakout", "trend_ema_4h", "composite_signal"],
         required=True,
     )
     parser.add_argument(

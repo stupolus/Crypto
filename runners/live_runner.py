@@ -155,6 +155,14 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
         # есть ключ. Без них стратегия молчит (пустые Static-провайдеры) —
         # безопасный no-op до фазы 21.3-live/21.4.
         return LiquidationReversalStrategy(config=liqrev_cfg(), risk_engine=risk_engine)
+    if name == "composite_signal":
+        from strategies.composite_signal import CompositeSignalStrategy
+        from strategies.composite_signal import get_default_config as comp_cfg
+
+        # Как liquidation_reversal: без Coinglass-провайдеров (ключ +
+        # фаза live-wiring, план 32) — безопасный no-op, не торгует.
+        # Forward-test на демо запускается ТОЛЬКО после backfill-валидации.
+        return CompositeSignalStrategy(config=comp_cfg(), risk_engine=risk_engine)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -599,6 +607,7 @@ def main() -> None:
             "oil_eia_avoid",
             "stock_earnings_avoid",
             "liquidation_reversal",
+            "composite_signal",
         ],
         required=True,
     )

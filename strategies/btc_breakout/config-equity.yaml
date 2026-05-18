@@ -1,0 +1,36 @@
+# btc_breakout — EQUITY-вариант (daily TradFi). Обоснование:
+# plans/26-tradfi-внешняя-история-2026-05-18.md.
+# Pre-registered a-priori решение (до взгляда на доходность): фильтр
+# объёма (volume_multiplier) калиброван под спайки 15m крипты и
+# структурно не подходит дневному индексу/акции (объём гладкий,
+# редко +50% к 20-дневной средней) — он режет ~95% сигналов и делает
+# тест бессмысленным. Здесь он фактически отключён (множитель ~0),
+# остальная логика Donchian+ATR без изменений. Параметры НЕ
+# подгоняются под доходность.
+
+# symbol — косметика для бэктеста (филлы идут из файла свечей); формат
+# BingX требует дефис. Реальный инструмент задаётся файлом --candles.
+symbol: EQUITY-USD
+timeframe: 1d
+
+# Donchian: 20 дней ≈ месяц торгов.
+donchian_n: 20
+
+# ATR (Wilder) — без изменений.
+atr_window: 14
+atr_percentile_min: 0.5
+atr_percentile_lookback: 200
+
+# Volume-фильтр фактически отключён (структурно неприменим к индексу).
+volume_sma_window: 20
+volume_multiplier: 0.0001
+
+# Composite.
+funding_rate_max_pct: 0.05
+
+# Stop / TP — как в свинге.
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+tp2_trailing_ema: 21
+
+risk_tier: B
