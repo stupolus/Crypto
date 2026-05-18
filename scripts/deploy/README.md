@@ -63,3 +63,24 @@ sudo systemctl disable 'crypto-runner@*'
 - `read_only: true` — root FS только для чтения
 - `no-new-privileges: true` — sudo внутри контейнера невозможен
 - Отдельная Docker network — не видим Odoo и наоборот
+
+## Faber-VST автономный таймер (план 42)
+
+Демо-стратегия Faber (NASDAQ100-перп на BingX **VST**, НЕ live)
+крутится сама на VPS через systemd-timer (как crypto-postmortem):
+
+```bash
+# на VPS, после git pull в /opt/crypto и install.sh:
+sudo systemctl enable --now faber-vst.timer
+systemctl list-timers | grep faber          # видно следующий запуск
+journalctl -u faber-vst -n 20 --no-pager     # логи прогонов
+# kill-switch (мгновенный стоп без остановки сервиса):
+touch /opt/crypto/ops/faber_HALT
+```
+
+Ежедневно 21:00 UTC реконсилирует позицию по сигналу Faber,
+идемпотентно (повтор безопасен), Persistent=true (нагонит
+пропуск при простое VPS). `/etc/crypto/.env` — ТОЛЬКО
+`BINGX_ENV=vst` + `BINGX_VST_*` (live-ключей нет; код
+hard-guard). Артефакты: `ops/faber_vst.jsonl` (прогоны/ошибки),
+`ops/faber_vst_state.json` (период-стейт брейкеров).

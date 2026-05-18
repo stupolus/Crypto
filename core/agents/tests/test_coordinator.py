@@ -135,7 +135,7 @@ async def test_coordinator_size_out_of_range() -> None:
                 return_value=httpx.Response(200, json=_anthropic_response(payload))
             )
             agent = CoordinatorAgent(api_key="test-key", client=client)
-            with pytest.raises(AgentExecutionError, match="size_risk_pct.*must be number in"):
+            with pytest.raises(AgentExecutionError, match=r"size_risk_pct.*must be number in"):
                 await agent.run(AgentRequest(context=_valid_context()))
 
 

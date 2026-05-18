@@ -121,6 +121,10 @@ install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-postmortem.service" \
   /etc/systemd/system/crypto-postmortem.service
 install -m 644 "${INSTALL_DIR}/scripts/deploy/crypto-postmortem.timer" \
   /etc/systemd/system/crypto-postmortem.timer
+install -m 644 "${INSTALL_DIR}/scripts/deploy/faber-vst.service" \
+  /etc/systemd/system/faber-vst.service
+install -m 644 "${INSTALL_DIR}/scripts/deploy/faber-vst.timer" \
+  /etc/systemd/system/faber-vst.timer
 install -m 644 "${INSTALL_DIR}/scripts/deploy/logrotate.conf" \
   /etc/logrotate.d/crypto
 systemctl daemon-reload
