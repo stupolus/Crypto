@@ -1,0 +1,23 @@
+[Unit]
+Description=Crypto bot — Faber VST demo-исполнитель (oneshot, НЕ live)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=/etc/crypto/.env
+ExecStart=/opt/crypto/.venv/bin/python -m scripts.faber_vst_executor
+
+# Безопасность (как crypto-postmortem.service)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/crypto/ops
+ProtectHome=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=faber-vst
