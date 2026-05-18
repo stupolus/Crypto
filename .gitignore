@@ -72,6 +72,7 @@ data/screener_events/
 data/liquidations/
 data/funding/
 data/oi/
+data/coinglass/
 data/heatmap/
 data/news/
 data/raw/
@@ -103,6 +104,13 @@ htmlcov/
 ops/batch-*.json
 ops/live-*
 ops/walk-forward-*.json
+.last_consumed_sha
+ops/faber_demo.jsonl
+data/eia/
+ops/faber_demo_cron.log
+ops/faber_vst.jsonl
+ops/faber_vst_cron.log
+ops/faber_vst_state.json
 
 # yt_transcripts scratch (expiring signed URLs, regenerable)
 scripts/yt_transcripts/work/

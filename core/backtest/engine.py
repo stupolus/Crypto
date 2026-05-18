@@ -111,23 +111,45 @@ class BacktestEngine:
         equity_curve: list[tuple[int, Decimal]] = []
 
         for idx, candle in enumerate(candles):
-            # 1. Если есть pending market order — fill по open текущей свечи.
+            # 1. Pending entry: MARKET → fill по open (taker+slippage).
+            #    LIMIT → maker-fill ТОЛЬКО если диапазон свечи коснулся
+            #    лимит-цены; иначе ордер снимается (валидность 1 бар —
+            #    скальп не «висит»). Это реалистичная мейкер-модель
+            #    (как у фондов): своя цена, maker-fee, без adverse
+            #    slippage, но часть сделок не исполняется (не гонимся).
             if pending is not None and open_pos is None:
-                fill = self._simulate_market_fill(
-                    request=pending.request,
-                    fill_price=candle.open,
-                    fill_time_ms=candle.open_time_ms,
-                    reason="ENTRY",
-                )
-                equity -= fill.fee
-                equity_curve.append((fill.timestamp_ms, equity))
-                strategy.on_fill(fill)
-
-                open_pos = self._open_position_from_request(pending.request, fill)
-                builder = _TradeBuilder(
-                    entry=fill,
-                    side_sign=Decimal("1") if pending.request.side == "BUY" else Decimal("-1"),
-                )
+                req = pending.request
+                fill = None
+                if req.order_type == "LIMIT":
+                    assert req.price is not None
+                    lp = req.price
+                    touched = (req.side == "BUY" and candle.low <= lp) or (
+                        req.side == "SELL" and candle.high >= lp
+                    )
+                    if touched:
+                        fill = self._simulate_limit_fill(
+                            request=req,
+                            fill_price=lp,
+                            fill_time_ms=candle.open_time_ms,
+                            reason="ENTRY",
+                        )
+                    # не коснулись → ордер снят (pending=None ниже)
+                else:
+                    fill = self._simulate_market_fill(
+                        request=req,
+                        fill_price=candle.open,
+                        fill_time_ms=candle.open_time_ms,
+                        reason="ENTRY",
+                    )
+                if fill is not None:
+                    equity -= fill.fee
+                    equity_curve.append((fill.timestamp_ms, equity))
+                    strategy.on_fill(fill)
+                    open_pos = self._open_position_from_request(req, fill)
+                    builder = _TradeBuilder(
+                        entry=fill,
+                        side_sign=Decimal("1") if req.side == "BUY" else Decimal("-1"),
+                    )
                 pending = None
 
             # 2. Если позиция открыта — проверяем SL/TP на диапазоне свечи.
@@ -212,6 +234,28 @@ class BacktestEngine:
             timestamp_ms=fill_time_ms,
             side=request.side,
             price=adjusted_price,
+            quantity=request.quantity,
+            fee=fee,
+            reason=reason,
+        )
+
+    def _simulate_limit_fill(
+        self,
+        *,
+        request: OrderRequest,
+        fill_price: Decimal,
+        fill_time_ms: int,
+        reason: FillReason,
+    ) -> FillEvent:
+        """Maker-fill: ровно по лимит-цене, без adverse slippage,
+        комиссия maker (как у фондов: ставим цену, не берём ликвидность).
+        """
+        notional = fill_price * request.quantity
+        fee = notional * Decimal(str(self._config.fees.maker_pct)) / _HUNDRED
+        return FillEvent(
+            timestamp_ms=fill_time_ms,
+            side=request.side,
+            price=fill_price,
             quantity=request.quantity,
             fee=fee,
             reason=reason,
