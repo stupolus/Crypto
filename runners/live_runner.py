@@ -151,10 +151,41 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
             get_default_config as liqrev_cfg,
         )
 
-        # Провайдеры (Coinglass/CVD) подключаются в llm_runner когда
-        # есть ключ. Без них стратегия молчит (пустые Static-провайдеры) —
-        # безопасный no-op до фазы 21.3-live/21.4.
-        return LiquidationReversalStrategy(config=liqrev_cfg(), risk_engine=risk_engine)
+        lr_cfg = liqrev_cfg()
+        # Ф1.2-live: если есть Coinglass-ключ — поднимаем live-провайдеры
+        # (liq/oi/cvd/funding). Без ключа — старый no-op (Static-заглушки),
+        # стратегия молчит, но раннер не падает.
+        from parsers.coinglass.client import CoinglassClient, CoinglassSettings
+
+        if CoinglassSettings().api_key:
+            from core.signals.live_providers import build_coinglass_live_providers
+
+            cg = CoinglassClient()
+            providers = build_coinglass_live_providers(
+                cg, lr_cfg.symbol, lr_cfg.timeframe
+            )
+            if providers is not None:
+                liq_p, oi_p, delta_p, funding_p = providers
+                logger.info(
+                    "liquidation_reversal: Coinglass live providers wired "
+                    "(%s @ %s)",
+                    lr_cfg.symbol,
+                    lr_cfg.timeframe,
+                )
+                return LiquidationReversalStrategy(
+                    config=lr_cfg,
+                    risk_engine=risk_engine,
+                    liquidation_provider=liq_p,
+                    oi_provider=oi_p,
+                    delta_provider=delta_p,
+                    funding_provider=funding_p,
+                )
+            logger.warning(
+                "liquidation_reversal: symbol %s не маппится на Coinglass, "
+                "поднимаю no-op фолбэк",
+                lr_cfg.symbol,
+            )
+        return LiquidationReversalStrategy(config=lr_cfg, risk_engine=risk_engine)
     raise SystemExit(f"unknown strategy: {name}")
 
 
