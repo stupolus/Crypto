@@ -1,0 +1,18 @@
+# Экран-минимум (разведочный фильтр по монетам/фьючерсам).
+# База — smoke-прогон BTC 4h ~7мес без OI-гейта (план 01 §6a/§6b).
+# ⚠️ НЕ критерий live/testnet. Только сужение списка кандидатов.
+# Полная валидация остаётся: ≥2 года, ≥30 сделок OOS, с OI-гейтом.
+
+# Пороги «приземлены» к базе BTC (smoke), чтобы сама база проходила:
+# BTC = 9 сделок, PF 1.603, Sharpe 0.529, DD 5.663%, P&L 6.18%.
+min_trades: 9
+min_profit_factor: 1.60
+min_sharpe: 0.52
+max_drawdown_pct: 5.70
+min_total_pnl_pct: 0.0   # строго > 0
+
+# Условия прогона (для воспроизводимости)
+strategy: liquidation_reversal
+strategy_config: трейдер/стратегии/композит-btc.yaml
+timeframe: 4h
+window_months: 7

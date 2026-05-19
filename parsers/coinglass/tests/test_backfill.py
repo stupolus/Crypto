@@ -49,7 +49,7 @@ def test_backfill_populates_providers() -> None:
             },
         )
     )
-    respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
+    respx.get(f"{_BASE}/api/futures/open-interest/history").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -88,7 +88,7 @@ def test_plan_inactive_yields_empty_but_no_crash() -> None:
     respx.get(f"{_BASE}/api/futures/liquidation/history").mock(
         return_value=httpx.Response(200, json={"code": "401", "msg": "Upgrade plan"})
     )
-    respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
+    respx.get(f"{_BASE}/api/futures/open-interest/history").mock(
         return_value=httpx.Response(200, json={"code": "401", "msg": "Upgrade plan"})
     )
     respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(
@@ -124,7 +124,7 @@ def test_pagination_multi_window() -> None:
         return httpx.Response(200, json={"code": "0", "data": data})
 
     respx.get(f"{_BASE}/api/futures/liquidation/history").mock(side_effect=_liq)
-    respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
+    respx.get(f"{_BASE}/api/futures/open-interest/history").mock(
         return_value=httpx.Response(200, json={"code": "0", "data": []})
     )
     respx.get(f"{_BASE}/api/futures/taker-buy-sell-volume/history").mock(

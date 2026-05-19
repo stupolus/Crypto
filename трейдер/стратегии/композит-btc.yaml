@@ -1,0 +1,50 @@
+# Композитная стратегия (сетап A — liquidation reversal) — конфиг бота «трейдер».
+#
+# Бот «трейдер» НЕ дублирует код: переиспользует движок
+# strategies/liquidation_reversal (методология Щукина, план 21), но со
+# своим конфигом и своими правилами риска (трейдер/правила/).
+# Запуск: scripts/run_backtest.py --strategy liquidation_reversal \
+#         --strategy-config трейдер/стратегии/композит-btc.yaml
+# Числа из материалов курса — НЕ подгонять под бэктест (AGENTS.md).
+
+symbol: BTC-USDT
+
+# Ф1: только BTC, сетап A. ТФ зависит от тарифа Coinglass:
+#   - HOBBYIST: liquidation history только 4h/6h/8h/12h/1d/1w → swing 4h.
+#   - STANDARD: доступны 15m/1h → можно прогнать HF-скальп-вариант (Р1).
+# По умолчанию swing 4h (бэктестим на доступном тарифе).
+timeframe: 4h
+
+# «Значимый экстремум» — Donchian-50 (не локальный шум)
+level_n: 50
+
+# Ликвидационный sweep
+liq_spike_min: 5.0
+liq_min_baseline_usd: 100000   # мажоры BTC/ETH ≥ $100k (курс, видео 008)
+liq_baseline_n: 30
+
+# Цикл ликвидаций: не входить в свечу sweep, ждать 2 свечи
+cycle_wait_bars: 2
+
+# OI gate ВКЛЮЧЁН (2026-05-19): OI-история доступна на платном ключе
+# через /api/futures/open-interest/history (клиент починен). Это
+# главный gate методики Щукина.
+oi_gate_enabled: true
+oi_lookback: 6
+oi_rise_pct: 3.0
+oi_fall_pct: 3.0
+
+# CVD подтверждение
+cvd_lookback: 6
+
+# Funding-фильтр: не шортить при funding ≤ -1.5% (фаза «дойки»)
+funding_short_block: -0.015
+
+# Risk / exits. Источник истины — трейдер/правила/риск-профиль.md
+# (риск 0.5%/сделку, биржевой стоп вместе с входом, цель ≥1.5R).
+# Цель 1:3 курса удовлетворяет фильтру ≥1.5R бота.
+stop_min_pct: 0.5
+tp1_r_multiple: 3.0
+risk_tier: B          # риск-сайзинг — через --risk-config трейдера (Ф1.3)
+
+direction_bias: both

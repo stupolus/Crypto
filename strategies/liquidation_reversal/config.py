@@ -24,7 +24,7 @@ class _Strict(BaseModel):
 
 class LiqReversalConfig(_Strict):
     symbol: str
-    timeframe: Literal["5m", "15m", "1h", "4h"]
+    timeframe: Literal["5m", "15m", "1h", "4h", "6h", "8h", "12h", "1d"]
 
     # «Значимый экстремум» — Donchian lookback (план 21: ~50).
     level_n: int = Field(gt=0)
@@ -37,7 +37,10 @@ class LiqReversalConfig(_Strict):
     # Цикл ликвидаций: ждать N свечей после sweep до входа.
     cycle_wait_bars: int = Field(ge=0)
 
-    # OI gate.
+    # OI gate. ``oi_gate_enabled=False`` полностью отключает gate
+    # направления (для сред без исторического OI). По умолчанию True —
+    # поведение не меняется для существующих конфигов.
+    oi_gate_enabled: bool = True
     oi_lookback: int = Field(gt=0)
     oi_rise_pct: float = Field(gt=0)
     oi_fall_pct: float = Field(gt=0)
@@ -52,6 +55,22 @@ class LiqReversalConfig(_Strict):
     stop_min_pct: float = Field(gt=0)
     tp1_r_multiple: float = Field(gt=0)
     risk_tier: RiskTier = RiskTier.B
+
+    # Улучшение №1: ATR-стоп (трейдер/правила/риск-профиль.md — стоп от
+    # волатильности). Если оба заданы — дистанция стопа не уже
+    # ATR(period)*mult. Default None → поведение не меняется.
+    stop_atr_period: int | None = Field(default=None, gt=1)
+    stop_atr_mult: float | None = Field(default=None, gt=0)
+
+    # Улучшение №2: методичный разворот-выход (конспект/правила-выхода:
+    # лонг закрывать при CVD↓+OI↓, шорт — симметрично). Default off.
+    reversal_exit_enabled: bool = False
+
+    # Улучшение №3: формальный «цикл ликвидаций завершён» (конспект/
+    # правила-входа): cycle_wait_bars подряд БЕЗ новой крупной
+    # ликвидации, счётчик сбрасывается новым sweep. Default off → старый
+    # фикс-wait.
+    cycle_formal: bool = False
 
     # both / long_only / short_only.
     direction_bias: Literal["both", "long_only", "short_only"] = "both"

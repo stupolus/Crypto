@@ -285,6 +285,57 @@ def test_a2_short_passes_on_falling_oi() -> None:
     assert order.side == "SELL"
 
 
+def test_oi_gate_disabled_allows_short_despite_rising_oi() -> None:
+    """oi_gate_enabled=False → шорт проходит даже при растущем OI."""
+    n = 7
+    hist = _history(n)
+    trig_ts = n * _STEP
+    trigger = _k(trig_ts, "100", "112", "100", "110")
+    confirm_ts = (n + 1) * _STEP
+    confirm = _k(confirm_ts, "110", "111", "108", "109")
+    liq = StaticLiquidationProvider(
+        {
+            "BTC-USDT": {
+                trig_ts - 3 * _STEP: _bucket("0", "100"),
+                trig_ts - 2 * _STEP: _bucket("0", "100"),
+                trig_ts - _STEP: _bucket("0", "100"),
+                trig_ts: _bucket("0", "50000"),
+            }
+        }
+    )
+    oi_rising = StaticOpenInterestProvider({"BTC-USDT": _oi_rising(confirm_ts)})
+    delta = StaticDeltaProvider(
+        {"BTC-USDT": [(confirm_ts - 3 * _STEP, Decimal("5")), (confirm_ts, Decimal("-20"))]}
+    )
+    fund = StaticFundingProvider({"BTC-USDT": Decimal("0.0")})
+    s = LiquidationReversalStrategy(
+        _cfg(oi_gate_enabled=False),
+        RiskEngine(),
+        liquidation_provider=liq,
+        oi_provider=oi_rising,
+        delta_provider=delta,
+        funding_provider=fund,
+    )
+    s.on_candle_close(
+        StrategyContext(
+            current_candle=trigger,
+            history=(*hist, trigger),
+            equity=Decimal("10000"),
+            open_position=None,
+        )
+    )
+    order = s.on_candle_close(
+        StrategyContext(
+            current_candle=confirm,
+            history=(*hist, trigger, confirm),
+            equity=Decimal("10000"),
+            open_position=None,
+        )
+    )
+    assert order is not None
+    assert order.side == "SELL"
+
+
 def test_no_sweep_no_setup() -> None:
     """Нет ликвидаций → нет setup, нет ордера."""
     n = 7
@@ -299,6 +350,84 @@ def test_no_sweep_no_setup() -> None:
                 history=(*hist, trigger),
                 equity=Decimal("10000"),
                 open_position=None,
+            )
+        )
+        is None
+    )
+
+
+def test_atr_stop_widens_distance() -> None:
+    """Улучшение №1: ATR-стоп не уже ATR*mult (расширяет фикс-floor)."""
+    s = LiquidationReversalStrategy(
+        _cfg(stop_min_pct=0.1, stop_atr_period=3, stop_atr_mult=2.0),
+        RiskEngine(),
+    )
+    # свечи с TR≈2 (high-low=2) → ATR≈2; entry 100 → atr_dist≈4
+    hist = [_k(i * _STEP, "100", "101", "99", "100") for i in range(6)]
+    entry = Decimal("100")
+    stop = s._compute_stop(entry, "BUY", Decimal("99.95"), hist)
+    fixed = entry - entry * Decimal("0.001")  # stop_min_pct=0.1%
+    assert (entry - stop) > (entry - fixed)  # ATR расширил
+    assert (entry - stop) >= Decimal("3.5")  # ≈ ATR(2)*2
+
+
+def test_reversal_exit_closes_long_on_cvd_oi_down() -> None:
+    """Улучшение №2: лонг закрывается при CVD↓ и OI↓."""
+    from core.backtest import OpenPosition
+
+    ts = 20 * _STEP
+    delta = StaticDeltaProvider(
+        {"BTC-USDT": [(ts - 3 * _STEP, Decimal("50")), (ts, Decimal("-30"))]}
+    )
+    oi = StaticOpenInterestProvider({"BTC-USDT": _oi_falling(ts)})
+    s = LiquidationReversalStrategy(
+        _cfg(reversal_exit_enabled=True),
+        RiskEngine(),
+        oi_provider=oi,
+        delta_provider=delta,
+    )
+    pos = OpenPosition(
+        entry_price=Decimal("100"),
+        quantity=Decimal("0.5"),
+        side="BUY",
+        stop_price=Decimal("95"),
+        take_profit_price=None,
+        entry_time_ms=ts - 5 * _STEP,
+    )
+    order = s.on_candle_close(
+        StrategyContext(
+            current_candle=_k(ts, "100", "101", "99", "100"),
+            history=tuple(_history(25)),
+            equity=Decimal("10000"),
+            open_position=pos,
+        )
+    )
+    assert order is not None
+    assert order.side == "SELL"
+    assert order.quantity == Decimal("0.5")
+
+
+def test_reversal_exit_disabled_by_default() -> None:
+    """Без флага позицию ведёт биржевой SL/TP (return None)."""
+    from core.backtest import OpenPosition
+
+    ts = 20 * _STEP
+    s = LiquidationReversalStrategy(_cfg(), RiskEngine())
+    pos = OpenPosition(
+        entry_price=Decimal("100"),
+        quantity=Decimal("0.5"),
+        side="BUY",
+        stop_price=Decimal("95"),
+        take_profit_price=None,
+        entry_time_ms=ts - _STEP,
+    )
+    assert (
+        s.on_candle_close(
+            StrategyContext(
+                current_candle=_k(ts, "100", "101", "99", "100"),
+                history=tuple(_history(25)),
+                equity=Decimal("10000"),
+                open_position=pos,
             )
         )
         is None

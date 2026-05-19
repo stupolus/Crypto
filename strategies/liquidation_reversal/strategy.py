@@ -25,10 +25,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from adapters.bingx.models import Kline
 from adapters.bingx.private_models import OrderRequest, OrderSide
 from core.backtest import FillEvent, StrategyContext
 from core.risk import (
@@ -51,6 +53,7 @@ from core.signals import (
     StaticFundingProvider,
     StaticLiquidationProvider,
     StaticOpenInterestProvider,
+    atr,
     detect_liquidation_sweep,
     detect_oi_trend,
     donchian_channel,
@@ -76,6 +79,7 @@ class _PendingSetup:
     side: OrderSide
     level_price: Decimal  # donchian ref для structural SL
     bars_since: int
+    quiet_bars: int = 0  # подряд баров без новой крупной ликвидации (улучш.№3)
 
 
 class LiquidationReversalStrategy:
@@ -116,6 +120,8 @@ class LiquidationReversalStrategy:
         if ctx.open_position is not None:
             self._state = _State.OPEN
             self._setup = None
+            if self._cfg.reversal_exit_enabled:
+                return self._reversal_exit_order(ctx, candle.open_time_ms)
             return None
         if self._state == _State.PENDING:
             return None
@@ -132,7 +138,15 @@ class LiquidationReversalStrategy:
         # Если есть pending setup — продвигаем цикл и проверяем подтверждение.
         if self._setup is not None:
             self._setup.bars_since += 1
-            if self._setup.bars_since < self._cfg.cycle_wait_bars:
+            if self._cfg.cycle_formal:
+                # Улучшение №3: цикл завершён = cycle_wait_bars подряд
+                # без новой крупной ликвидации (счётчик сброс новым sweep).
+                fresh = self._detect_sweep(ts) is not None
+                self._setup.quiet_bars = 0 if fresh else self._setup.quiet_bars + 1
+                ready = self._setup.quiet_bars >= self._cfg.cycle_wait_bars
+            else:
+                ready = self._setup.bars_since >= self._cfg.cycle_wait_bars
+            if not ready:
                 return None
             # Цикл завершён — проверяем подтверждение, иначе сбрасываем.
             order = self._try_confirm_and_enter(ctx, ts)
@@ -211,7 +225,7 @@ class LiquidationReversalStrategy:
 
         entry = candle.close
         risk_side = Side.LONG if setup.side == "BUY" else Side.SHORT
-        stop = self._compute_stop(entry, setup.side, setup.level_price)
+        stop = self._compute_stop(entry, setup.side, setup.level_price, ctx.history)
         tp1 = self._compute_tp1(entry, stop, setup.side)
 
         decision = self._risk.evaluate(
@@ -247,6 +261,8 @@ class LiquidationReversalStrategy:
         )
 
     def _oi_gate_passes(self, side: OrderSide, ts: int) -> bool:
+        if not self._cfg.oi_gate_enabled:
+            return True
         series = self._oi.get_series(self._cfg.symbol, ts, self._cfg.oi_lookback * 4)
         oi_cfg = OpenInterestConfig(
             rise_pct=Decimal(str(self._cfg.oi_rise_pct)),
@@ -270,6 +286,47 @@ class LiquidationReversalStrategy:
         # LONG: покупатель появился (CVD вверх). SHORT: продавец (вниз).
         return change > 0 if side == "BUY" else change < 0
 
+    def _reversal_exit_order(self, ctx: StrategyContext, ts: int) -> OrderRequest | None:
+        """Улучшение №2: методичный разворот-выход.
+
+        Лонг закрываем при CVD↓ И OI↓; шорт — при CVD↑ И OI↑
+        (конспект/правила-выхода). Иначе позицию ведёт биржевой SL/TP.
+        """
+        pos = ctx.open_position
+        if pos is None:
+            return None
+        cvd = self._delta.get_cvd_series(self._cfg.symbol, ts, self._cfg.cvd_lookback)
+        if len(cvd) < 2:
+            return None
+        cvd_up = cvd[-1] - cvd[0] > 0
+        oi_series = self._oi.get_series(self._cfg.symbol, ts, self._cfg.oi_lookback * 4)
+        oi_sig = detect_oi_trend(
+            oi_series,
+            OpenInterestConfig(
+                rise_pct=Decimal(str(self._cfg.oi_rise_pct)),
+                fall_pct=Decimal(str(self._cfg.oi_fall_pct)),
+                lookback=self._cfg.oi_lookback,
+            ),
+        )
+        if oi_sig is None:
+            return None
+        if pos.side == "BUY":
+            reverse = (not cvd_up) and oi_sig.state == OIState.FALLING
+            close_side: OrderSide = "SELL"
+        else:
+            reverse = cvd_up and oi_sig.state == OIState.RISING
+            close_side = "BUY"
+        if not reverse:
+            return None
+        return OrderRequest(
+            symbol=self._cfg.symbol,
+            side=close_side,
+            order_type="MARKET",
+            quantity=abs(pos.quantity),
+            reduce_only=True,
+            client_order_id=uuid.uuid4().hex[:32],
+        )
+
     def _funding_allows_short(self, ts: int) -> bool:
         funding = self._funding.get_funding_rate(self._cfg.symbol, ts)
         if funding is None:
@@ -277,9 +334,24 @@ class LiquidationReversalStrategy:
         # Не шортить в глубоко негативный funding («фаза дойки»).
         return funding > Decimal(str(self._cfg.funding_short_block))
 
-    def _compute_stop(self, entry: Decimal, side: OrderSide, level_price: Decimal) -> Decimal:
-        """Structural SL — за экстремум (level) ИЛИ min %, что дальше."""
+    def _compute_stop(
+        self,
+        entry: Decimal,
+        side: OrderSide,
+        level_price: Decimal,
+        history: Sequence[Kline],
+    ) -> Decimal:
+        """Structural SL — за экстремум ИЛИ min %, что дальше.
+
+        Улучшение №1: если задан ATR-стоп, дистанция не уже
+        ATR(period)*mult (стоп от волатильности, трейдер/правила/
+        риск-профиль.md). ATR только расширяет, не сужает.
+        """
         min_dist = entry * Decimal(str(self._cfg.stop_min_pct)) / _HUNDRED
+        ap, am = self._cfg.stop_atr_period, self._cfg.stop_atr_mult
+        if ap is not None and am is not None and len(history) >= ap + 1:
+            atr_dist = atr(history, ap) * Decimal(str(am))
+            min_dist = max(min_dist, atr_dist)
         if side == "BUY":
             return min(level_price, entry - min_dist)
         return max(level_price, entry + min_dist)
