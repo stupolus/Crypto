@@ -9,6 +9,7 @@ from scripts.macro_edge_probe import (
     pct_returns,
     pearson,
     permutation_pvalue_lag,
+    permutation_two_sample_mean_diff,
 )
 
 
@@ -64,3 +65,16 @@ def test_align_by_date_intersection() -> None:
     a, b = align_by_date(s1, s2)
     assert a == [2.0, 3.0]
     assert b == [20.0, 30.0]
+
+
+def test_permutation_two_sample_mean_diff_known_effect() -> None:
+    a = [1.0] * 60  # mean = 1
+    b = [0.0] * 60  # mean = 0
+    obs, p = permutation_two_sample_mean_diff(a, b, n_shuffles=500, seed=7)
+    assert abs(obs - 1.0) < 1e-12
+    assert p < 0.05
+
+
+def test_permutation_two_sample_empty_returns_safe() -> None:
+    obs, p = permutation_two_sample_mean_diff([], [1.0, 2.0], n_shuffles=10)
+    assert obs == 0.0 and p == 1.0

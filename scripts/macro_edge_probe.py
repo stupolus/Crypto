@@ -87,6 +87,27 @@ def conditional_mean_test(
     return obs, (ge + 1) / (n_shuffles + 1)
 
 
+def permutation_two_sample_mean_diff(
+    a: Sequence[float], b: Sequence[float], *, n_shuffles: int, seed: int = 0
+) -> tuple[float, float]:
+    """mean(a) − mean(b) под H0 обменимости. (obs, two-sided p)."""
+    if not a or not b:
+        return 0.0, 1.0
+    obs = sum(a) / len(a) - sum(b) / len(b)
+    pool = list(a) + list(b)
+    na = len(a)
+    rng = random.Random(seed)
+    ge = 0
+    for _ in range(n_shuffles):
+        rng.shuffle(pool)
+        a2 = pool[:na]
+        b2 = pool[na:]
+        diff = sum(a2) / len(a2) - sum(b2) / len(b2)
+        if abs(diff) >= abs(obs):
+            ge += 1
+    return obs, (ge + 1) / (n_shuffles + 1)
+
+
 def align_by_date(*series: Sequence[tuple[int, float]]) -> list[list[float]]:
     """По общему UTC-дню (intersection). Каждая серия: list[(ts_ms, value)]."""
     dicts = [{datetime.fromtimestamp(t / 1000, UTC).date(): v for t, v in s} for s in series]
