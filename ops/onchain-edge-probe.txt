@@ -1,0 +1,11 @@
+on-chain probe (start 2018, n=3060, Bonferroni α=0.00417)
+
+Lag-correlation (perm test, ΔSupply → ΔBTC):
+  Stablecoin→BTC     k=1  obs=+0.0224  p=0.1574  —
+  Stablecoin→BTC     k=2  obs=+0.0141  p=0.2909  —
+  Stablecoin→BTC     k=3  obs=-0.0228  p=0.1559  —
+
+Conditional mean (top vs bottom decile by ΔSupply, perm test):
+  Stablecoin→BTC     k=1  obs=-0.0012  p=0.7076  —
+  Stablecoin→BTC     k=2  obs=+0.0040  p=0.1994  —
+  Stablecoin→BTC     k=3  obs=-0.0012  p=0.7276  —
