@@ -105,7 +105,13 @@ def _interval_to_ms(interval: str) -> int:
     return table[interval]
 
 
-def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
+def _build_strategy(
+    name: str,
+    risk_engine: RiskEngine,
+    *,
+    symbol: str | None = None,
+    interval: str | None = None,
+) -> Any:
     if name == "btc_breakout":
         return BtcBreakoutStrategy(config=get_default_config(), risk_engine=risk_engine)
     if name == "us_session_breakout":
@@ -156,13 +162,32 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
         # безопасный no-op до фазы 21.3-live/21.4.
         return LiquidationReversalStrategy(config=liqrev_cfg(), risk_engine=risk_engine)
     if name == "composite_signal":
+        import os
+
         from strategies.composite_signal import CompositeSignalStrategy
         from strategies.composite_signal import get_default_config as comp_cfg
 
-        # Как liquidation_reversal: без Coinglass-провайдеров (ключ +
-        # фаза live-wiring, план 32) — безопасный no-op, не торгует.
-        # Forward-test на демо запускается ТОЛЬКО после backfill-валидации.
-        return CompositeSignalStrategy(config=comp_cfg(), risk_engine=risk_engine)
+        comp_config = comp_cfg()
+        # Live Coinglass-провайдеры подключаются ТОЛЬКО если есть ключ
+        # (план 34). Нет ключа / нет маппинга символа → безопасный
+        # no-op (Static-провайдеры, стратегия не торгует) — без падения.
+        if os.environ.get("COINGLASS_API_KEY") and symbol:
+            from parsers.coinglass.live_providers import build_live_providers
+
+            providers = build_live_providers(symbol, interval or comp_config.timeframe)
+            if providers is not None:
+                fund, liq, oi, delta = providers
+                logger.info("composite_signal: live Coinglass-провайдеры подключены")
+                return CompositeSignalStrategy(
+                    config=comp_config,
+                    risk_engine=risk_engine,
+                    funding_provider=fund,
+                    liquidation_provider=liq,
+                    oi_provider=oi,
+                    delta_provider=delta,
+                )
+        logger.info("composite_signal: no-op (нет COINGLASS_API_KEY/symbol/маппинга)")
+        return CompositeSignalStrategy(config=comp_config, risk_engine=risk_engine)
     raise SystemExit(f"unknown strategy: {name}")
 
 
@@ -297,7 +322,7 @@ async def run(args: argparse.Namespace) -> None:
     metrics = MetricsWriter(metrics_path)
 
     risk = RiskEngine()
-    strategy = _build_strategy(args.strategy, risk)
+    strategy = _build_strategy(args.strategy, risk, symbol=args.symbol, interval=args.interval)
     logger.info("strategy initialized: %s", args.strategy)
 
     async with BingXClient(settings=settings) as client:
