@@ -56,6 +56,22 @@ class LiqReversalConfig(_Strict):
     tp1_r_multiple: float = Field(gt=0)
     risk_tier: RiskTier = RiskTier.B
 
+    # Улучшение №1: ATR-стоп (трейдер/правила/риск-профиль.md — стоп от
+    # волатильности). Если оба заданы — дистанция стопа не уже
+    # ATR(period)*mult. Default None → поведение не меняется.
+    stop_atr_period: int | None = Field(default=None, gt=1)
+    stop_atr_mult: float | None = Field(default=None, gt=0)
+
+    # Улучшение №2: методичный разворот-выход (конспект/правила-выхода:
+    # лонг закрывать при CVD↓+OI↓, шорт — симметрично). Default off.
+    reversal_exit_enabled: bool = False
+
+    # Улучшение №3: формальный «цикл ликвидаций завершён» (конспект/
+    # правила-входа): cycle_wait_bars подряд БЕЗ новой крупной
+    # ликвидации, счётчик сбрасывается новым sweep. Default off → старый
+    # фикс-wait.
+    cycle_formal: bool = False
+
     # both / long_only / short_only.
     direction_bias: Literal["both", "long_only", "short_only"] = "both"
 
