@@ -161,14 +161,11 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
             from core.signals.live_providers import build_coinglass_live_providers
 
             cg = CoinglassClient()
-            providers = build_coinglass_live_providers(
-                cg, lr_cfg.symbol, lr_cfg.timeframe
-            )
+            providers = build_coinglass_live_providers(cg, lr_cfg.symbol, lr_cfg.timeframe)
             if providers is not None:
                 liq_p, oi_p, delta_p, funding_p = providers
                 logger.info(
-                    "liquidation_reversal: Coinglass live providers wired "
-                    "(%s @ %s)",
+                    "liquidation_reversal: Coinglass live providers wired (%s @ %s)",
                     lr_cfg.symbol,
                     lr_cfg.timeframe,
                 )
@@ -181,8 +178,7 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
                     funding_provider=funding_p,
                 )
             logger.warning(
-                "liquidation_reversal: symbol %s не маппится на Coinglass, "
-                "поднимаю no-op фолбэк",
+                "liquidation_reversal: symbol %s не маппится на Coinglass, поднимаю no-op фолбэк",
                 lr_cfg.symbol,
             )
         return LiquidationReversalStrategy(config=lr_cfg, risk_engine=risk_engine)
