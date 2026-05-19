@@ -105,7 +105,9 @@ def _interval_to_ms(interval: str) -> int:
     return table[interval]
 
 
-def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
+def _build_strategy(
+    name: str, risk_engine: RiskEngine, strategy_config_path: str | None = None
+) -> Any:
     if name == "btc_breakout":
         return BtcBreakoutStrategy(config=get_default_config(), risk_engine=risk_engine)
     if name == "us_session_breakout":
@@ -144,14 +146,23 @@ def _build_strategy(name: str, risk_engine: RiskEngine) -> Any:
             news_calendar=build_earnings_blackout_calendar(cfg.symbol),
         )
     if name == "liquidation_reversal":
+        from pathlib import Path as _Path
+
         from strategies.liquidation_reversal import (
             LiquidationReversalStrategy,
         )
         from strategies.liquidation_reversal import (
             get_default_config as liqrev_cfg,
         )
+        from strategies.liquidation_reversal.config import (
+            load_config as liqrev_load_config,
+        )
 
-        lr_cfg = liqrev_cfg()
+        lr_cfg = (
+            liqrev_load_config(_Path(strategy_config_path))
+            if strategy_config_path
+            else liqrev_cfg()
+        )
         # Ф1.2-live: если есть Coinglass-ключ — поднимаем live-провайдеры
         # (liq/oi/cvd/funding). Без ключа — старый no-op (Static-заглушки),
         # стратегия молчит, но раннер не падает.
@@ -316,7 +327,7 @@ async def run(args: argparse.Namespace) -> None:
     metrics = MetricsWriter(metrics_path)
 
     risk = RiskEngine()
-    strategy = _build_strategy(args.strategy, risk)
+    strategy = _build_strategy(args.strategy, risk, args.strategy_config)
     logger.info("strategy initialized: %s", args.strategy)
 
     async with BingXClient(settings=settings) as client:
@@ -641,6 +652,14 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help="Только логировать сигналы, не отправлять ордера",
+    )
+    parser.add_argument(
+        "--strategy-config",
+        default=None,
+        help=(
+            "Путь к альтернативному YAML-конфигу стратегии (поддерживается "
+            "для liquidation_reversal; иначе берётся дефолт стратегии)."
+        ),
     )
     parser.add_argument("--journal-db", default="ops/live-orders.sqlite")
     parser.add_argument("--metrics-file", default="ops/live-metrics.jsonl")

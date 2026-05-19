@@ -106,3 +106,9 @@ ops/walk-forward-*.json
 
 # yt_transcripts scratch (expiring signed URLs, regenerable)
 scripts/yt_transcripts/work/
+
+# Трейдер-бот: артефакты журнала (sqlite/jsonl/heartbeat не коммитим).
+трейдер/журнал/*.sqlite
+трейдер/журнал/*.sqlite-journal
+трейдер/журнал/*.jsonl
+трейдер/журнал/heartbeat
