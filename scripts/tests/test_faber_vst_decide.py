@@ -5,8 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from core.risk import Side
 from scripts import faber_vst_executor
-from scripts.faber_vst_executor import decide, is_halted, period_keys, roll_state
+from scripts.faber_vst_executor import (
+    decide,
+    estimate_liq_price,
+    is_halted,
+    period_keys,
+    roll_state,
+)
 
 
 def test_cash_flat_noop() -> None:
@@ -80,3 +87,36 @@ def test_roll_state_same_day_keeps() -> None:
     st, dp, _wp, _mp = roll_state(prev, Decimal("97"), ("2026-05-18", "2026-W20", "2026-05"))
     assert st["day_trades"] == "1"  # тот же день — не сброшено
     assert dp == Decimal("-3")
+
+
+def test_liq_long_formula() -> None:
+    # entry=100, L=3, mmr=0.01 → 100·(1 − 1/3 + 0.01) = 67.67
+    liq = estimate_liq_price(Decimal("100"), Side.LONG, Decimal("3"), Decimal("0.01"))
+    assert liq == Decimal("67.67")
+
+
+def test_liq_long_below_entry() -> None:
+    # LONG: ликвидация строго ниже entry (иначе буфер-чек бессмыслен)
+    liq = estimate_liq_price(Decimal("250"), Side.LONG, Decimal("3"), Decimal("0.01"))
+    assert liq < Decimal("250")
+
+
+def test_liq_short_above_entry() -> None:
+    liq = estimate_liq_price(Decimal("100"), Side.SHORT, Decimal("3"), Decimal("0.01"))
+    assert liq > Decimal("100")
+    # 100·(1 + 1/3 − 0.01) = 132.33
+    assert liq == Decimal("132.33")
+
+
+def test_liq_higher_leverage_closer_to_entry() -> None:
+    # Больше плеча → liq ближе к entry (опаснее) — монотонность LONG
+    lo = estimate_liq_price(Decimal("100"), Side.LONG, Decimal("2"), Decimal("0.01"))
+    hi = estimate_liq_price(Decimal("100"), Side.LONG, Decimal("5"), Decimal("0.01"))
+    assert hi > lo  # 5x: liq ближе к entry (выше) чем 2x
+
+
+def test_liq_higher_mmr_closer_to_entry() -> None:
+    # Завышенный mmr двигает LONG-liq ближе к entry → буфер строже
+    lo = estimate_liq_price(Decimal("100"), Side.LONG, Decimal("3"), Decimal("0.005"))
+    hi = estimate_liq_price(Decimal("100"), Side.LONG, Decimal("3"), Decimal("0.02"))
+    assert hi > lo
