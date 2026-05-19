@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from scripts.onchain_edge_probe import parse_llama_stablecoin_chart
 
 
 def test_parse_llama_basic_and_sort_and_skip_nulls() -> None:
-    raw = [
+    raw: list[dict[str, Any]] = [
         {"date": "200", "totalCirculatingUSD": {"peggedUSD": 2_000_000}},
         {"date": "100", "totalCirculatingUSD": {"peggedUSD": 1_000_000}},
         # Пропуски: нет totalCirculatingUSD → отбрасываем.
