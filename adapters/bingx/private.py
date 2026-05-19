@@ -456,13 +456,15 @@ class PrivateAPI:
         # Знак position_amount: положительный → LONG, отрицательный → SHORT.
         close_side: OrderSide = "SELL" if target.position_amount > 0 else "BUY"
         qty = abs(target.position_amount)
-        # Инвариант проекта: one-way режим → positionSide всегда BOTH.
-        # На VST 2026-05-11: передача LONG/SHORT в one-way даёт
-        # code=109400 «PositionSide field can only be set to BOTH».
+        # positionSide наследуем из самой позиции: BingX возвращает
+        # "BOTH" в one-way режиме и "LONG"/"SHORT" в hedge — это работает
+        # для обоих. Хардкод "BOTH" падал в hedge mode с code=109400
+        # «PositionSide can only be set to LONG or SHORT» на TradFi-перпах
+        # (NCSI*/NCCO*/NCFX*), которые на VST доступны только в hedge.
         close_req = OrderRequest(
             symbol=symbol,
             side=close_side,
-            position_side="BOTH",
+            position_side=target.position_side,
             order_type="MARKET",
             quantity=qty,
             reduce_only=True,
