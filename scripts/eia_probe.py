@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 _OUT = Path("data/eia/crude_stocks.jsonl")
-_SERIES = "PET.WCESTUS1.W"  # недельные коммерческие запасы нефти (ex-SPR)
+_SERIES = "WCESTUS1"  # v2 facet: недельные коммерческие запасы нефти (ex-SPR)
 
 
 def _key() -> str | None:
