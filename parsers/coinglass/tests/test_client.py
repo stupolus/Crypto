@@ -75,7 +75,7 @@ def test_network_error_returns_empty() -> None:
 
 @respx.mock
 def test_oi_history_parsed_tolerant_fields() -> None:
-    respx.get(f"{_BASE}/api/futures/open-interest/aggregated-history").mock(
+    respx.get(f"{_BASE}/api/futures/open-interest/history").mock(
         return_value=httpx.Response(
             200,
             json={

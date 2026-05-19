@@ -36,8 +36,11 @@ logger = logging.getLogger(__name__)
 _ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 _BASE_URL = "https://open-api-v4.coinglass.com"
 _LIQ_HISTORY_PATH = "/api/futures/liquidation/history"
-# Подтверждён живым ключом HOBBYIST 2026-05-15 (OHLC, берём close).
-_OI_HISTORY_PATH = "/api/futures/open-interest/aggregated-history"
+# По-биржевой OI history. Эмпирически (платный ключ, 2026-05-19): этот
+# путь отдаёт 1000 OHLC-точек, тогда как aggregated-history на том же
+# тарифе пуст. Aggregated оставлен как override-константа.
+_OI_HISTORY_PATH = "/api/futures/open-interest/history"
+_OI_AGG_HISTORY_PATH = "/api/futures/open-interest/aggregated-history"
 _TIMEOUT_S = 15.0
 
 
@@ -189,16 +192,19 @@ class CoinglassClient:
         *,
         symbol: str,
         interval: str,
+        exchange: str = "Binance",
         limit: int = 1000,
         start_time_ms: int | None = None,
         end_time_ms: int | None = None,
     ) -> list[tuple[int, Decimal]]:
         """История OI как [(ts_ms, oi_usd)]. Пусто если план не активен.
 
-        Парсинг толерантен к именам полей (close/openInterest/value) —
-        точная форма дозаверяется smoke-скриптом когда план оплачен.
+        Путь ``/api/futures/open-interest/history`` требует ``exchange``
+        и пары-символ (``BTCUSDT``). Парсинг полей толерантен
+        (close/openInterest/value).
         """
         params: dict[str, Any] = {
+            "exchange": exchange,
             "symbol": symbol,
             "interval": interval,
             "limit": min(max(limit, 1), 1000),

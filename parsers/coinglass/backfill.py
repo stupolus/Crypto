@@ -125,7 +125,7 @@ def backfill_providers(
             StaticDeltaProvider(),
         )
 
-    exchange, cg_symbol, cg_coin = mapping
+    exchange, cg_symbol, _cg_coin = mapping
     interval_ms = _INTERVAL_MS.get(interval)
 
     if interval_ms is None:
@@ -138,7 +138,8 @@ def backfill_providers(
             end_time_ms=end_time_ms,
         )
         oi_rows = cg.get_open_interest_history(
-            symbol=cg_coin,
+            exchange=exchange,
+            symbol=cg_symbol,
             interval=interval,
             start_time_ms=start_time_ms,
             end_time_ms=end_time_ms,
@@ -167,7 +168,8 @@ def backfill_providers(
         )
         oi_rows = _paginate(
             lambda s, e: cg.get_open_interest_history(
-                symbol=cg_coin,
+                exchange=exchange,
+                symbol=cg_symbol,
                 interval=interval,
                 start_time_ms=s,
                 end_time_ms=e,
