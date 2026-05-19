@@ -24,7 +24,7 @@ class _Strict(BaseModel):
 
 class LiqReversalConfig(_Strict):
     symbol: str
-    timeframe: Literal["5m", "15m", "1h", "4h"]
+    timeframe: Literal["5m", "15m", "1h", "4h", "6h", "8h", "12h", "1d"]
 
     # «Значимый экстремум» — Donchian lookback (план 21: ~50).
     level_n: int = Field(gt=0)
