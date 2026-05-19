@@ -121,6 +121,22 @@ def decide(signal: str, cur_qty: Decimal, target_qty: Decimal) -> str:
     return "rebalance"
 
 
+def estimate_liq_price(entry: Decimal, side: Side, lev_cap: Decimal, mmr: Decimal) -> Decimal:
+    """Консервативная пред-входная оценка цены ликвидации
+    (изолированная маржа, linear USDT-перп). Чистая, тестируемая.
+
+    `liq_LONG ≈ entry·(1 − 1/L + mmr)`, `liq_SHORT ≈ entry·(1 + 1/L − mmr)`.
+    `L` = потолок плеча тира (не факт. risk-based — оно ниже, значит
+    реальная liq дальше → оценка пессимистична → буфер-чек строже).
+    Завышенный `mmr` тоже двигает liq ближе к entry (в безопасную
+    сторону). Источник чисел: бизнес/риск-профиль.md /
+    core/risk/config.yaml (НЕ хардкод)."""
+    inv_l = Decimal("1") / lev_cap
+    if side == Side.LONG:
+        return (entry * (Decimal("1") - inv_l + mmr)).quantize(Decimal("0.01"))
+    return (entry * (Decimal("1") + inv_l - mmr)).quantize(Decimal("0.01"))
+
+
 def _log(row: dict[str, object]) -> None:
     _LOG.parent.mkdir(parents=True, exist_ok=True)
     with _LOG.open("a") as fh:
@@ -170,8 +186,11 @@ async def _run(dry: bool) -> None:
         )
         target_qty = Decimal("0")
         reject: str | None = None
+        eng = RiskEngine()
+        mmr = Decimal(str(eng.config.limits.maintenance_margin_rate))
+        liq_est = estimate_liq_price(pp_d, Side.LONG, _MAX_LEV, mmr)
         if sig == "LONG" and pp_d > stop_px:
-            decision = RiskEngine().evaluate(
+            decision = eng.evaluate(
                 RiskInputs(
                     equity=equity,
                     day_pnl=day_pnl,
@@ -183,6 +202,7 @@ async def _run(dry: bool) -> None:
                     entry_price=pp_d,
                     stop_price=stop_px,
                     tier=RiskTier.B,
+                    liquidation_price=liq_est,
                 )
             )
             if isinstance(decision, RiskRejection):
@@ -195,7 +215,7 @@ async def _run(dry: bool) -> None:
         act = "noop" if reject else decide(sig, cur_qty, target_qty)
         base |= {
             "equity": equity, "cur_qty": cur_qty, "stop_px": stop_px,
-            "day_pnl": day_pnl, "week_pnl": week_pnl,
+            "liq_est": liq_est, "day_pnl": day_pnl, "week_pnl": week_pnl,
             "target_qty": target_qty, "decision": act, "reject": reject,
         }  # fmt: skip
         if dry or act == "noop":

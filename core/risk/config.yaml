@@ -14,6 +14,7 @@ limits:
   max_effective_leverage: 10     # абсолютный потолок (риск-профиль.md)
   stop_min_pct: 0.15             # тоньше = шум даже для скальпа
   liquidation_buffer_ratio: 0.3  # (stop - liq) >= 30% от расстояния стопа
+  maintenance_margin_rate: 0.01  # консерв. mmr для пред-входной оценки liq (риск-профиль.md; > tier-1 BingX мажоров)
 
 # Circuit breakers: при срабатывании RiskEngine отказывает в ордере.
 # Сброс state — на стороне orchestrator (по UTC-дню/неделе/месяцу).
