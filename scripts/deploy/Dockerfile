@@ -24,6 +24,7 @@ COPY core/ ./core/
 COPY strategies/ ./strategies/
 COPY runners/ ./runners/
 COPY scripts/ ./scripts/
+COPY parsers/ ./parsers/
 
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
@@ -44,6 +45,7 @@ COPY --from=builder /build/core /app/core
 COPY --from=builder /build/strategies /app/strategies
 COPY --from=builder /build/runners /app/runners
 COPY --from=builder /build/scripts /app/scripts
+COPY --from=builder /build/parsers /app/parsers
 COPY pyproject.toml /app/
 
 # Директории для journal/metrics — будут смонтированы как volume.

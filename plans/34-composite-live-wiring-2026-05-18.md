@@ -49,6 +49,15 @@ composite в `live_runner` = безопасный **no-op**: Static-провай
 с `COINGLASS_API_KEY`. `up -d`, наблюдать по pre-registered дизайну,
 kill-критерий жёсткий.
 
+## Статус (2026-05-18) — ВЫПОЛНЕНО (код), демо за воротами
+
+34.1 `parsers/coinglass/live_providers.py` (4 провайдера + time-кэш от
+429 + `build_live_providers`) + 4 теста на fake-клиенте. 34.2
+`live_runner._build_strategy`: ключ+symbol+маппинг → live-провайдеры,
+иначе безопасный no-op (D3 не задет). `config-4h-demo.yaml` (тариф
+даёт ≥4h). Гейты: 665 тестов зелёные, ruff/mypy strict чисто.
+Деплой (34.3) — на VPS, ПОСЛЕ backfill-критерия (план 33), не отсюда.
+
 ## Definition of Done
 - Гейт пройден ДО начала 34.1 (иначе фаза не делается).
 - live-провайдеры + тесты на fake-клиенте; ruff/mypy strict; pytest -q.

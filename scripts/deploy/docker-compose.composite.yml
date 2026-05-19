@@ -23,7 +23,7 @@ services:
       - /etc/crypto/.env
     environment:
       BINGX_SYMBOL: ETH-USDT
-      BINGX_INTERVAL: 15m
+      BINGX_INTERVAL: 4h
       BINGX_STRATEGY: composite_signal
     volumes:
       - crypto-comp-data:/var/lib/crypto
@@ -57,7 +57,7 @@ services:
       - /etc/crypto/.env
     environment:
       BINGX_SYMBOL: BTC-USDT
-      BINGX_INTERVAL: 15m
+      BINGX_INTERVAL: 4h
       BINGX_STRATEGY: composite_signal
     volumes:
       - crypto-comp-data:/var/lib/crypto
