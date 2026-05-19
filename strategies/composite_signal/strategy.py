@@ -20,6 +20,7 @@ import logging
 import uuid
 from collections import deque
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -148,6 +149,9 @@ class CompositeSignalStrategy:
             return None
         # 43.3 ATR-percentile режим-фильтр (v2; default [0,1] → no-op).
         if not self._atr_regime_ok(ctx.history[:-1]):
+            return None
+        # 44.1 Session-time gate (v3; default None → no-op).
+        if not self._session_ok(ts):
             return None
 
         entry = candle.close
@@ -290,6 +294,13 @@ class CompositeSignalStrategy:
     def _confidence_ok(self, confidence: float) -> bool:
         """43.1 v2 confidence-gate. Default min_confidence=0 → всегда True."""
         return confidence >= self._cfg.min_confidence
+
+    def _session_ok(self, ts_ms: int) -> bool:
+        """44.1 v3 session-time gate. Default None → всегда True."""
+        allowed = self._cfg.session_hours_utc
+        if allowed is None:
+            return True
+        return datetime.fromtimestamp(ts_ms / 1000, UTC).hour in allowed
 
     def _atr_regime_ok(self, closed: Sequence[Kline]) -> bool:
         """43.3 ATR-percentile фильтр режима. Default [0,1] → True (выкл)."""

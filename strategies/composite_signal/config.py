@@ -67,6 +67,10 @@ class CompositeConfig(_Strict):
     atr_pct_max: float = Field(default=1.0, ge=0, le=1)
     atr_pct_lookback: int = Field(default=200, gt=0)
 
+    # ── v3 (план 44). Default None = выкл; v2 не затронут ──
+    # 44.1 Session-time gate: список разрешённых UTC-часов (0..23). None = любые.
+    session_hours_utc: tuple[int, ...] | None = None
+
 
 class CompositeConfigError(Exception):
     """Ошибка загрузки/валидации config."""

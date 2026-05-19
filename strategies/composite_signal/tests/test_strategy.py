@@ -255,3 +255,20 @@ def test_confidence_gate() -> None:
     assert s._confidence_ok(0.59) is False
     assert s._confidence_ok(0.6) is True
     assert s._confidence_ok(0.95) is True
+
+
+def test_v3_session_gate_default_passes_any_hour() -> None:
+    """44.1 default session_hours_utc=None → пропускает любой ts."""
+    s = CompositeSignalStrategy(_cfg(), RiskEngine())
+    assert s._session_ok(0) is True
+    assert s._session_ok(1_700_000_000_000) is True
+    assert _cfg().session_hours_utc is None  # v2 backward-safe
+
+
+def test_v3_session_gate_band() -> None:
+    """v3 band (13..15 UTC): внутри True, снаружи False."""
+    s = CompositeSignalStrategy(_cfg(session_hours_utc=(13, 14, 15)), RiskEngine())
+    # 2024-01-01 14:00 UTC
+    assert s._session_ok(1_704_117_600_000) is True
+    # 2024-01-01 03:00 UTC
+    assert s._session_ok(1_704_078_000_000) is False
