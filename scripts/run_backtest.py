@@ -158,6 +158,7 @@ def main() -> None:
             "oil_eia_avoid",
             "stock_earnings_avoid",
             "liquidation_reversal",
+            "composite_signal",
         ],
         default="btc_breakout",
         help="Какую стратегию прогонять",
@@ -406,6 +407,24 @@ def main() -> None:
             )
 
         strategy_factory = _liqrev_factory
+    elif args.strategy == "composite_signal":
+        from strategies.composite_signal import (
+            get_default_config as comp_get_default_config,
+        )
+        from strategies.composite_signal.config import load_config as comp_load_config
+
+        strategy_cfg = (
+            comp_load_config(args.strategy_config)
+            if args.strategy_config is not None
+            else comp_get_default_config()
+        )
+
+        def _comp_factory(cfg: Any) -> Strategy:
+            from strategies.composite_signal import CompositeSignalStrategy
+
+            return CompositeSignalStrategy(config=cfg, risk_engine=risk_engine)
+
+        strategy_factory = _comp_factory
     else:  # btc_breakout
         strategy_cfg = (
             load_strategy_config(args.strategy_config)

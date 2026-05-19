@@ -97,6 +97,7 @@ testpaths = [
     "runners/tests",
     "scripts/tests",
     "strategies/btc_breakout/tests",
+    "strategies/composite_signal/tests",
     "strategies/trend_ema_4h/tests",
     "strategies/us_session_breakout/tests",
 ]

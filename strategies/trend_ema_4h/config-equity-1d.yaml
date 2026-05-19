@@ -1,0 +1,22 @@
+# trend_ema на ДНЕВНЫХ equity (план 27). Pre-registered: параметры =
+# дефолт trend_ema_4h, НЕ подгоняются под доходность (урок XRP-скальп).
+# Меняем только timeframe (1d) и symbol-заглушку (косметика — филлы
+# идут из файла --candles; формат BingX требует дефис).
+# Гипотеза: трендследование архитектурно подходит дневным индексам/
+# акциям (retro iter#3: чопная крипта — нет, equity-тренд — да).
+
+symbol: EQUITY-USD
+timeframe: 1d
+
+ema_fast: 20
+ema_slow: 50
+
+atr_window: 14
+sl_atr_multiplier: 1.5
+
+min_ema_spread_pct: 0.2
+
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+
+risk_tier: B

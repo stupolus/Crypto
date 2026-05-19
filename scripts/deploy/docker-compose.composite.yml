@@ -1,0 +1,96 @@
+# composite_signal — ОТДЕЛЬНЫЙ стек, изолирован от D3
+# (docker-compose.yml: crypto-btc/eth/xrp). Другие имена + сеть +
+# volume — не пересекается с работающим D3.
+#
+# ⚠️ НЕ ПОДНИМАТЬ, пока composite не прошёл backfill-WF по критерию
+# iter#4 (план 32). Слепой forward непроверенной стратегии = ошибка D3.
+#
+# Предусловия: /etc/crypto/.env с BINGX_VST_* И COINGLASS_API_KEY.
+# Запуск (на VPS, ПОСЛЕ прохождения критерия):
+#   docker compose -f scripts/deploy/docker-compose.composite.yml up -d
+# Логи:  docker compose -f scripts/deploy/docker-compose.composite.yml logs -f
+# Стоп:  docker compose -f scripts/deploy/docker-compose.composite.yml down
+
+services:
+  comp-eth:
+    build:
+      context: ../..
+      dockerfile: scripts/deploy/Dockerfile
+    image: crypto-bot:latest
+    container_name: crypto-comp-eth
+    restart: unless-stopped
+    env_file:
+      - /etc/crypto/.env
+    environment:
+      BINGX_SYMBOL: ETH-USDT
+      BINGX_INTERVAL: 15m
+      BINGX_STRATEGY: composite_signal
+    volumes:
+      - crypto-comp-data:/var/lib/crypto
+    networks:
+      - crypto-comp-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  comp-btc:
+    image: crypto-bot:latest
+    container_name: crypto-comp-btc
+    restart: unless-stopped
+    env_file:
+      - /etc/crypto/.env
+    environment:
+      BINGX_SYMBOL: BTC-USDT
+      BINGX_INTERVAL: 15m
+      BINGX_STRATEGY: composite_signal
+    volumes:
+      - crypto-comp-data:/var/lib/crypto
+    networks:
+      - crypto-comp-net
+    depends_on:
+      - comp-eth
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 128M
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+networks:
+  crypto-comp-net:
+    driver: bridge
+    name: crypto-comp-net
+
+volumes:
+  crypto-comp-data:
+    driver: local
+    name: crypto-comp-data
