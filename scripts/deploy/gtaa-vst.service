@@ -1,0 +1,23 @@
+[Unit]
+Description=Crypto bot — GTAA-4 VST demo-исполнитель (план 47, oneshot, НЕ live)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=/etc/crypto/.env
+ExecStart=/opt/crypto/.venv/bin/python -m scripts.gtaa_vst_executor
+
+# Безопасность (зеркало faber-vst.service)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/crypto/ops
+ProtectHome=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gtaa-vst

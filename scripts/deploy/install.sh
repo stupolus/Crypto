@@ -125,6 +125,11 @@ install -m 644 "${INSTALL_DIR}/scripts/deploy/faber-vst.service" \
   /etc/systemd/system/faber-vst.service
 install -m 644 "${INSTALL_DIR}/scripts/deploy/faber-vst.timer" \
   /etc/systemd/system/faber-vst.timer
+# GTAA-4 portfolio (план 47, заменяет Faber-single по решению владельца)
+install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst.service" \
+  /etc/systemd/system/gtaa-vst.service
+install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst.timer" \
+  /etc/systemd/system/gtaa-vst.timer
 install -m 644 "${INSTALL_DIR}/scripts/deploy/logrotate.conf" \
   /etc/logrotate.d/crypto
 systemctl daemon-reload

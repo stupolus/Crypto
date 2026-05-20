@@ -84,3 +84,43 @@ touch /opt/crypto/ops/faber_HALT
 `BINGX_ENV=vst` + `BINGX_VST_*` (live-ключей нет; код
 hard-guard). Артефакты: `ops/faber_vst.jsonl` (прогоны/ошибки),
 `ops/faber_vst_state.json` (период-стейт брейкеров).
+
+## GTAA-4 портфель (план 47, заменяет Faber-single)
+
+После решения владельца 2026-05-19: **GTAA-4 заменяет Faber-single
+на demo** (Faber-single = частный случай GTAA-4, оба на одном
+VST-аккаунте конфликтуют за NDX-позицию).
+
+GTAA-4 = 4 VST-перпа равными долями 1/4 эквити (план 45.2):
+NCSISP500 (S&P 500), NCSINASDAQ100 (NASDAQ), NCCOGOLD (золото),
+NCCO1OILWTI (нефть). Faber 200SMA-сигнал per Yahoo-индекс,
+монто-ребаланс на EOM, B-tier 1% риск-сайз + ≤3x плечо.
+
+**Миграция на VPS** (после git pull main):
+```bash
+# на VPS:
+cd /opt/crypto && sudo -u crypto git pull origin main
+sudo bash scripts/deploy/install.sh           # ставит gtaa-vst.{service,timer}
+sudo systemctl disable --now faber-vst.timer  # стопаем Faber-single
+sudo systemctl enable --now gtaa-vst.timer    # включаем GTAA-4
+```
+
+Проверка:
+```bash
+systemctl list-timers | grep -E 'faber|gtaa'  # gtaa в очереди, faber inactive
+journalctl -u gtaa-vst -n 30 --no-pager
+sudo -u crypto tail -n 8 /opt/crypto/ops/gtaa_vst.jsonl
+```
+
+Daily-trigger 21:30 UTC + state-tracking `last_rebalance_eom` →
+ровно один ребаланс/месяц (на следующем триггере после новой
+EOM-даты по Yahoo). Persistent=true нагоняет пропуск при
+простое. Идемпотентно.
+
+Kill-switch (отдельный от Faber):
+```bash
+touch /opt/crypto/ops/gtaa_HALT          # мгновенный стоп
+rm    /opt/crypto/ops/gtaa_HALT          # снять предохранитель
+```
+
+Артефакты: `ops/gtaa_vst.jsonl`, `ops/gtaa_vst_state.json`.
