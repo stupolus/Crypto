@@ -47,7 +47,7 @@ def _providers() -> tuple[
 
 
 def test_unmapped_symbol_returns_none() -> None:
-    assert build_live_providers("ZZZ-USDT", "4h", client=_FakeCG()) is None
+    assert build_live_providers("ZZZ-USDT", "4h", client=_FakeCG()) is None  # type: ignore[arg-type]
 
 
 def test_funding_anti_lookahead() -> None:

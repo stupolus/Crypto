@@ -650,6 +650,72 @@ async def test_close_position_long_sends_sell_reduce_only_market(
     assert "takeProfit" not in sent
 
 
+@pytest.mark.asyncio
+async def test_close_position_hedge_long_propagates_position_side(
+    cfg: BingXConfig,
+) -> None:
+    """В hedge mode close должен передать positionSide из самой позиции
+    (LONG/SHORT), иначе VST падает с code=109400 на TradFi-перпах
+    (NCSI*/NCCO*/NCFX*). Хардкод "BOTH" ломал ребалансировку Faber-VST."""
+    async with (
+        BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
+        respx.mock(base_url=cfg.active_rest_base) as mock,
+    ):
+        _stub_server_time(mock, cfg)
+        mock.delete(cfg.rest_endpoints.cancel_all_orders).mock(
+            return_value=httpx.Response(200, json=_ok({"orders": []}))
+        )
+        mock.get(cfg.rest_endpoints.positions).mock(
+            return_value=httpx.Response(
+                200,
+                json=_ok(
+                    [
+                        {
+                            "symbol": "NCSINASDAQ1002USD-USDT",
+                            "positionId": "p2",
+                            "positionSide": "LONG",
+                            "positionAmt": "0.26",
+                            "avgPrice": "28818.84",
+                            "leverage": 3,
+                            "unrealizedProfit": "0",
+                        }
+                    ]
+                ),
+            )
+        )
+        place_route = mock.post(cfg.rest_endpoints.place_order).mock(
+            return_value=httpx.Response(
+                200,
+                json=_ok(
+                    {
+                        "order": {
+                            "orderId": "9002",
+                            "symbol": "NCSINASDAQ1002USD-USDT",
+                            "side": "SELL",
+                            "positionSide": "LONG",
+                            "type": "MARKET",
+                            "status": "FILLED",
+                            "price": "0",
+                            "origQty": "0.26",
+                            "executedQty": "0.26",
+                            "time": 1_700_000_000_000,
+                            "updateTime": 1_700_000_000_500,
+                            "reduceOnly": True,
+                        }
+                    }
+                ),
+            )
+        )
+        await PrivateAPI(client).close_position("NCSINASDAQ1002USD-USDT")
+
+    sent = dict(place_route.calls.last.request.url.params)
+    assert sent["positionSide"] == "LONG", (
+        f"hedge mode: должен передаваться positionSide из позиции, got {sent.get('positionSide')}"
+    )
+    assert sent["side"] == "SELL"
+    assert sent["reduceOnly"] == "true"
+
+
 # ─── 0.D part 2: listenKey CRUD, cancel_all_after, compensating-close ──────
 
 
