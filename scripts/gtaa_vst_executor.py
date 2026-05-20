@@ -1,0 +1,309 @@
+"""Faber 2007 GTAA-4 на BingX VST — demo-исполнение (план 47.2). НЕ LIVE.
+
+4 актива FIXED (план 45.3): ^GSPC→NCSISP500, ^NDX→NCSINASDAQ100,
+GC=F→NCCOGOLD, CL=F→NCCO1OILWTI. Сигнал Faber 200SMA на каждом
+Yahoo-индексе (без look-ahead), equal-weight 1/4 эквити per ON,
+ежемесячный ребаланс EOM. HARD-assert env==vst.
+
+Идемпотентность: state.last_rebalance_eom; ребаланс только когда
+максимальная Yahoo-EOM-дата по 4 активам > state. Daily-timer
+автоматически делает один ребаланс/месяц + догон при простое.
+
+Stops: SMA200-уровень на индексе → перенесён на перп пропорцией.
+RiskEngine per-asset с pre-entry liq (план 41.6).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+import time
+import urllib.request
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+from adapters.bingx.client import BingXClient
+from adapters.bingx.private import PrivateAPI
+from adapters.bingx.private_models import OrderRequest
+from adapters.bingx.settings import BingXSettings
+from core.risk import RiskEngine, RiskInputs, RiskRejection, RiskTier, Side
+from scripts.faber_vst_executor import (
+    decide,
+    estimate_liq_price,
+    period_keys,
+    roll_state,
+)
+
+
+@dataclass(frozen=True)
+class _Asset:
+    label: str
+    yahoo: str  # URL-encoded
+    perp: str
+
+
+_ASSETS: tuple[_Asset, ...] = (
+    _Asset("GSPC", "%5EGSPC", "NCSISP5002USD-USDT"),
+    _Asset("NDX", "%5ENDX", "NCSINASDAQ1002USD-USDT"),
+    _Asset("GC", "GC%3DF", "NCCOGOLD2USD-USDT"),
+    _Asset("CL", "CL%3DF", "NCCO1OILWTI2USD-USDT"),
+)
+_N = Decimal(len(_ASSETS))
+_SMA = 200
+_RISK = Decimal("0.01")  # B-tier 1% эквити (бизнес/риск-профиль.md)
+_MAX_LEV = Decimal("3")  # B-tier потолок (применяется к доле 1/N)
+_TOL = Decimal("0.15")  # толеранс reuse через faber.decide
+_LOG = Path("ops/gtaa_vst.jsonl")
+_HALT = Path("ops/gtaa_HALT")  # отдельный kill-switch от faber
+_STATE = Path("ops/gtaa_vst_state.json")
+
+
+def is_halted() -> bool:
+    """Kill-switch: наличие ops/gtaa_HALT → НИ ОДНОГО ордера."""
+    return _HALT.exists()
+
+
+def _fetch_yahoo_daily(yahoo_sym: str) -> list[tuple[date, float]]:
+    """Daily adjclose Yahoo. Browser UA. Сорт по дате."""
+    u = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
+        f"?period1=0&period2={int(time.time())}&interval=1d"
+    )
+    req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as fh:
+        d = json.load(fh)
+    res = d["chart"]["result"][0]
+    ts = res["timestamp"]
+    adj = res["indicators"].get("adjclose") or [{}]
+    cl = adj[0].get("adjclose") if adj else None
+    if cl is None:
+        cl = res["indicators"]["quote"][0]["close"]
+    out: list[tuple[date, float]] = []
+    for t, c in zip(ts, cl, strict=True):
+        if c is not None and c > 0:
+            out.append((datetime.fromtimestamp(t, tz=UTC).date(), float(c)))
+    out.sort(key=lambda x: x[0])
+    return out
+
+
+def latest_eom_with_sma(
+    rows: list[tuple[date, float]], sma_n: int = _SMA
+) -> tuple[date, float, float] | None:
+    """Чистая. Последняя EOM-дата в данных + close + SMA(sma_n) на этот день.
+
+    EOM = последний наблюдаемый день в (year, month) бакете. Это honest
+    для бэктеста/исполнения: ровно тот close, который мы можем
+    использовать как сигнал."""
+    if len(rows) < sma_n + 1:
+        return None
+    # Группировка по (year, month), берём индекс последнего дня каждой группы.
+    last_idx_per_month: dict[tuple[int, int], int] = {}
+    for i, (d, _c) in enumerate(rows):
+        last_idx_per_month[(d.year, d.month)] = i
+    # Последний bucket = max key
+    if not last_idx_per_month:
+        return None
+    last_bucket = max(last_idx_per_month)
+    i_eom = last_idx_per_month[last_bucket]
+    if i_eom < sma_n - 1:
+        return None
+    closes = [c for (_d, c) in rows]
+    sma = sum(closes[i_eom - sma_n + 1 : i_eom + 1]) / sma_n
+    return rows[i_eom][0], rows[i_eom][1], sma
+
+
+def _perp_price(perp_symbol: str) -> float | None:
+    """Текущая цена перпа через swap v3 klines (last close)."""
+    u = (
+        "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
+        f"?symbol={perp_symbol}&interval=1d&limit=1"
+    )
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as fh:
+            rows = json.load(fh).get("data") or []
+        if not rows:
+            return None
+        last = rows[-1]
+        return float(last["close"] if isinstance(last, dict) else last[4])
+    except Exception:
+        return None
+
+
+def should_rebalance(target_eom: date, last_eom_str: str | None) -> bool:
+    """Чистая. Ребалансируем если target_eom строго новее state.
+
+    last_eom_str = state["last_rebalance_eom"] или None при первом запуске.
+    None → ребалансируем. Иначе сравниваем ISO-даты."""
+    if not last_eom_str:
+        return True
+    return target_eom > date.fromisoformat(last_eom_str)
+
+
+def _log(row: dict[str, object]) -> None:
+    _LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _LOG.open("a") as fh:
+        fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+
+
+async def _run(dry: bool) -> None:
+    s = BingXSettings()
+    if s.env != "vst":
+        print(f"STOP: BINGX_ENV={s.env!r} != 'vst'. Только demo. Не live.")
+        return
+    if is_halted():
+        _log({
+            "ts": int(time.time()), "action": "HALTED",
+            "reason": f"{_HALT} существует — kill-switch",
+        })  # fmt: skip
+        print(f"HALTED: {_HALT} существует.")
+        return
+
+    # 1. Yahoo сигналы для 4 индексов
+    eoms: dict[str, tuple[date, float, float]] = {}
+    for a in _ASSETS:
+        try:
+            rows = _fetch_yahoo_daily(a.yahoo)
+        except Exception as e:
+            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                  "reason": f"yahoo error: {type(e).__name__}"})  # fmt: skip
+            print(f"skip: yahoo {a.label} {type(e).__name__}")
+            return
+        e_eom = latest_eom_with_sma(rows)
+        if e_eom is None:
+            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                  "reason": "не хватает истории для SMA200"})  # fmt: skip
+            print(f"skip: {a.label} no sma200 data")
+            return
+        eoms[a.label] = e_eom
+
+    # 2. Триггер ребаланса: max EOM по 4 индексам vs state
+    target_eom = max(d for (d, _c, _s) in eoms.values())
+    prev = json.loads(_STATE.read_text()) if _STATE.exists() else {}
+    if not should_rebalance(target_eom, prev.get("last_rebalance_eom")):
+        _log({"ts": int(time.time()), "action": "noop",
+              "reason": "уже ребалансированы на этот EOM",
+              "target_eom": target_eom.isoformat()})  # fmt: skip
+        print(f"noop: уже ребалансированы на {target_eom}")
+        return
+
+    # 3. Цены перпов
+    perp_pxs: dict[str, float] = {}
+    for a in _ASSETS:
+        pp = _perp_price(a.perp)
+        if pp is None or pp <= 0:
+            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                  "reason": "нет цены перпа"})  # fmt: skip
+            print(f"skip: нет цены {a.perp}")
+            return
+        perp_pxs[a.label] = pp
+
+    # 4. BingX session, эквити, period-state
+    async with BingXClient(settings=s) as c:
+        api = PrivateAPI(c)
+        bal = await api.get_balance()
+        equity = next(
+            (Decimal(str(b.equity)) for b in bal if b.asset in ("USDT", "VST")),
+            Decimal(str(bal[0].equity)) if bal else Decimal("0"),
+        )
+        equity_share = (equity / _N).quantize(Decimal("0.01"))
+        st, day_pnl, week_pnl, month_pnl = roll_state(
+            prev, equity, period_keys(datetime.now(tz=UTC))
+        )
+        engine = RiskEngine()
+        mmr = Decimal(str(engine.config.limits.maintenance_margin_rate))
+
+        # 5. Per-asset reconcile
+        base_log: dict[str, object] = {
+            "ts": int(time.time()), "env": s.env,
+            "target_eom": target_eom.isoformat(),
+            "equity": str(equity), "equity_share": str(equity_share),
+        }  # fmt: skip
+        rows_done: list[dict[str, object]] = []
+        for a in _ASSETS:
+            _idx_date, idx_close, sma200 = eoms[a.label]
+            sig_on = idx_close > sma200
+            sig_str = "LONG" if sig_on else "CASH"
+            pp_d = Decimal(str(perp_pxs[a.label]))
+            stop_px = (pp_d * Decimal(str(sma200)) / Decimal(str(idx_close))).quantize(
+                Decimal("0.01")
+            )
+            poss = await api.get_positions(a.perp)
+            cur_qty = sum((Decimal(str(p.position_amount)) for p in poss), Decimal("0"))
+            target_qty = Decimal("0")
+            reject: str | None = None
+            liq_est: Decimal | None = None
+            if sig_on and pp_d > stop_px:
+                liq_est = estimate_liq_price(pp_d, Side.LONG, _MAX_LEV, mmr)
+                decision = engine.evaluate(
+                    RiskInputs(
+                        equity=equity_share,
+                        day_pnl=day_pnl, week_pnl=week_pnl, month_pnl=month_pnl,
+                        day_trades_count=int(st.get("day_trades", "0")),
+                        consecutive_losses=int(st.get("consecutive_losses", "0")),
+                        side=Side.LONG,
+                        entry_price=pp_d,
+                        stop_price=stop_px,
+                        tier=RiskTier.B,
+                        liquidation_price=liq_est,
+                    )
+                )  # fmt: skip
+                if isinstance(decision, RiskRejection):
+                    reject = f"{decision.code}: {decision.reason}"
+                else:
+                    qmax = (equity_share * _MAX_LEV) / pp_d
+                    target_qty = min(decision.quantity, qmax).quantize(Decimal("0.01"))
+            act = "noop" if reject else decide(sig_str, cur_qty, target_qty)
+            row: dict[str, object] = {
+                "label": a.label, "perp": a.perp, "signal": sig_str,
+                "idx_close": idx_close, "sma200": sma200,
+                "perp_price": float(pp_d), "stop_px": str(stop_px),
+                "liq_est": str(liq_est) if liq_est else None,
+                "cur_qty": str(cur_qty), "target_qty": str(target_qty),
+                "decision": act, "reject": reject,
+            }  # fmt: skip
+            if dry or act == "noop":
+                rows_done.append(row | {"action": f"{'DRY:' if dry else ''}{act}", "status": "ok"})
+                continue
+            try:
+                if act in ("close", "rebalance"):
+                    await api.close_position(a.perp)
+                if act in ("open_long", "rebalance") and target_qty > 0:
+                    req = OrderRequest(
+                        symbol=a.perp, side="BUY", position_side="LONG",
+                        order_type="MARKET", quantity=target_qty,
+                        attached_stop_loss=stop_px,
+                    )  # hedge-режим, фикс #164  # fmt: skip
+                    ack = await api.place_order(req)
+                    row["order_ack"] = getattr(ack, "order_id", str(ack))
+                rows_done.append(row | {"action": act, "status": "ok"})
+                st["day_trades"] = str(int(st.get("day_trades", "0")) + 1)
+            except Exception as e:
+                rows_done.append(
+                    row | {"action": act, "status": "error",
+                           "err": f"{type(e).__name__}: {str(e)[:200]}"}
+                )  # fmt: skip
+
+        # 6. Persist state + log all rows
+        st["last_rebalance_eom"] = target_eom.isoformat()
+        _STATE.write_text(json.dumps(st))
+        for r in rows_done:
+            _log({**base_log, **r})
+        ok_count = sum(1 for r in rows_done if r.get("status") == "ok")
+        print(
+            f"{datetime.now(tz=UTC).strftime('%Y-%m-%d')} GTAA-VST rebalance "
+            f"EOM={target_eom}: {ok_count}/{len(rows_done)} OK"
+        )
+
+
+def main() -> None:
+    dry = "--dry" in sys.argv
+    asyncio.run(_run(dry))
+    print("VST demo-исполнение (план 47). НЕ live.")
+
+
+if __name__ == "__main__":
+    main()

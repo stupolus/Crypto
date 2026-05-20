@@ -1,0 +1,11 @@
+[Unit]
+Description=Crypto bot — GTAA-4 VST реконсил (daily 21:30 UTC, ребаланс раз/мес через state)
+Requires=gtaa-vst.service
+
+[Timer]
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
