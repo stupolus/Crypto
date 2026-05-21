@@ -1,0 +1,17 @@
+# Хранилище загруженных свечей и прочих данных — не коммитим.
+data/
+*.parquet
+
+# Локальные секреты (на всякий случай — основной .gitignore в корне).
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
