@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 from exchanges.base import ExchangeAdapter, PriceLevel
+from exchanges.bingx import BingXAdapter
+from exchanges.bybit import BybitAdapter
+from exchanges.ccxt_base import CcxtAdapter
 from exchanges.errors import (
     AuthError,
     ExchangeError,
@@ -35,6 +38,9 @@ __all__ = [
     "OHLCV",
     "AuthError",
     "Balance",
+    "BingXAdapter",
+    "BybitAdapter",
+    "CcxtAdapter",
     "ExchangeAdapter",
     "ExchangeError",
     "InsufficientFunds",

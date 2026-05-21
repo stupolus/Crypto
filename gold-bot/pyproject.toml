@@ -10,6 +10,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<0.27",
     "ruff>=0.9,<0.10",
     "mypy>=1.14,<2",
 ]
@@ -18,7 +19,7 @@ exchange = [
     "ccxt>=4.4,<5",
 ]
 
-# ─── Ruff ────────────────────────────────────────
+# ─── Ruff ─────────────────────────────────────
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -35,7 +36,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "**/tests/*" = ["B011"]
 
-# ─── mypy ─────────────────────────────────────
+# ─── mypy ──────────────────────────
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -44,10 +45,15 @@ warn_return_any = true
 no_implicit_optional = true
 plugins = ["pydantic.mypy"]
 
-# ─── pytest ──────────────────────────────────
+[[tool.mypy.overrides]]
+module = ["ccxt.*"]
+ignore_missing_imports = true
+
+# ─── pytest ──────────────────────────
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["exchanges/tests"]
+asyncio_mode = "auto"
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
 markers = [
     "integration: ходит на реальный testnet биржи, запуск вручную через `pytest -m integration`",
