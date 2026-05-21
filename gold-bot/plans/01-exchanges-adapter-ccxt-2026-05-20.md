@@ -1,7 +1,7 @@
 # 01 — ccxt-адаптер BingX + Bybit
 
 Дата: 2026-05-20
-Статус: к согласованию (кода пока нет)
+Статус: в работе. Фаза 1A готова (модели + протокол + ошибки + тесты, локально зелёно: ruff/format/mypy strict/pytest 16). Фазы 1B-1G — впереди.
 
 ---
 
@@ -112,15 +112,15 @@ gold-bot/exchanges/
 
 ## Фазы реализации
 
-| Фаза | Что |
-|---|---|
-| **1A** | `pyproject.toml` для gold-bot + base.py (Protocol) + models.py (pydantic) + errors.py + tests/test_models.py |
-| **1B** | normalize.py + logging_utils.py + tests/test_normalize.py + tests/test_masking.py |
-| **1C** | bingx.py и bybit.py: market data (fetch_ohlcv/ticker/order_book/funding/markets) + unit-тесты с моками |
-| **1D** | account endpoints (balance, positions, set_leverage, set_margin_mode) + unit-тесты |
-| **1E** | trading (place_order с обязательным стопом, cancel, close, fetch_order, fetch_open_orders) + unit-тесты |
-| **1F** | Bybit testnet integration-тест (под флагом) + BingX dry-run integration-тест |
-| **1G** | `scripts/smoke_exchange.py` + README в `gold-bot/exchanges/` + создание пустого `journal/bingx-quirks.md` |
+| Фаза | Что | Статус |
+|---|---|---|
+| **1A** | `pyproject.toml` для gold-bot + base.py (Protocol) + models.py (pydantic) + errors.py + tests/test_models.py | ✅ готово (524bfbe) |
+| **1B** | normalize.py + logging_utils.py + tests/test_normalize.py + tests/test_masking.py | впереди |
+| **1C** | bingx.py и bybit.py: market data (fetch_ohlcv/ticker/order_book/funding/markets) + unit-тесты с моками | впереди |
+| **1D** | account endpoints (balance, positions, set_leverage, set_margin_mode) + unit-тесты | впереди |
+| **1E** | trading (place_order с обязательным стопом, cancel, close, fetch_order, fetch_open_orders) + unit-тесты | впереди |
+| **1F** | Bybit testnet integration-тест (под флагом) + BingX dry-run integration-тест | впереди (нужны ключи) |
+| **1G** | `scripts/smoke_exchange.py` + README в `gold-bot/exchanges/` + создание пустого `journal/bingx-quirks.md` | впереди |
 
 Каждая фаза = отдельный коммит на ветке `gold` или фиче-ветке от неё.
 
@@ -140,3 +140,4 @@ gold-bot/exchanges/
 | Дата | Изменение |
 |---|---|
 | 2026-05-20 | Создан план. Нуждается в одобрении. |
+| 2026-05-20 | Фаза 1A реализована: models.py, base.py, errors.py, __init__.py, tests/test_models.py, pyproject.toml. Локально зелёно (ruff, ruff format, mypy --strict, pytest 16/16). Коммит 524bfbe. |
