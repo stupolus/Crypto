@@ -29,6 +29,7 @@ from exchanges.models import (
     PositionSide,
     Ticker,
 )
+from exchanges.normalize import to_canonical
 
 __all__ = [
     "OHLCV",
@@ -51,4 +52,5 @@ __all__ = [
     "PriceLevel",
     "RateLimitError",
     "Ticker",
+    "to_canonical",
 ]
