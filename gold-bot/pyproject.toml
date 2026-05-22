@@ -63,7 +63,7 @@ ignore_missing_imports = true
 # ─── pytest ──────────
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["exchanges/tests", "marketdata/tests", "indicators/tests", "risk/tests", "backtest/tests"]
+testpaths = ["exchanges/tests", "marketdata/tests", "indicators/tests", "risk/tests", "backtest/tests", "strategies/mean_reversion_vwap/tests"]
 asyncio_mode = "auto"
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib", "-m", "not integration"]
 markers = [
