@@ -7,14 +7,45 @@ from decimal import Decimal
 
 import pytest
 
+from core.risk import RiskEngine
 from scripts import gtaa_vst_executor
 from scripts.gtaa_vst_executor import (
+    _ASSETS,
+    AssetPlan,
     format_rebalance_summary,
     is_halted,
     latest_eom_with_sma,
+    plan_asset_action,
     should_rebalance,
 )
 from scripts.gtaa_vst_report import build_report
+
+_ENGINE = RiskEngine()
+_MMR = Decimal(str(_ENGINE.config.limits.maintenance_margin_rate))
+_ZERO_PNL = (Decimal("0"), Decimal("0"), Decimal("0"))
+
+
+def _plan(
+    idx_close: float,
+    sma200: float,
+    perp_price: str,
+    cur_qty: str,
+    equity_share: str = "25000",
+) -> AssetPlan:
+    """Хелпер: план по 1 активу с дефолтными «здоровыми» брейкерами."""
+    return plan_asset_action(
+        _ASSETS[0],
+        idx_close,
+        sma200,
+        Decimal(perp_price),
+        Decimal(cur_qty),
+        Decimal(equity_share),
+        _ENGINE,
+        _MMR,
+        _ZERO_PNL,
+        day_trades=0,
+        consecutive_losses=0,
+    )
 
 
 def _make_daily(n: int, start: date = date(2026, 1, 1)) -> list[tuple[date, float]]:
@@ -168,3 +199,65 @@ def test_build_report_flags_no_heartbeat_and_errors() -> None:
     assert "ошибок/24ч: 1" in txt
     assert "NDX: Timeout" in txt
     assert "позиции не получены" in txt
+
+
+# --- plan_asset_action: ядро исполнения (DEMO_CRITERIA 3/4/5) ---
+
+
+def test_plan_on_flat_opens_long() -> None:
+    """ON (close>SMA200) + нет позиции → open_long, target>0."""
+    p = _plan(idx_close=110.0, sma200=100.0, perp_price="100", cur_qty="0")
+    assert p.signal == "LONG"
+    assert p.action == "open_long"
+    assert p.target_qty > 0
+    assert p.stop_px < p.perp_price  # стоп ниже входа (LONG)
+    assert p.liq_est is not None and p.liq_est < p.perp_price
+
+
+def test_plan_off_flat_noop() -> None:
+    """OFF (close<SMA200) + нет позиции → noop, target=0."""
+    p = _plan(idx_close=90.0, sma200=100.0, perp_price="100", cur_qty="0")
+    assert p.signal == "CASH"
+    assert p.action == "noop"
+    assert p.target_qty == 0
+
+
+def test_plan_off_with_position_closes() -> None:
+    """OFF + есть LONG-позиция → close (выход в кэш)."""
+    p = _plan(idx_close=90.0, sma200=100.0, perp_price="100", cur_qty="5")
+    assert p.signal == "CASH"
+    assert p.action == "close"
+    assert p.target_qty == 0
+
+
+def test_plan_on_already_in_target_noop() -> None:
+    """ON + позиция уже ≈target (в пределах толеранса) → noop (нет дублей)."""
+    p0 = _plan(idx_close=110.0, sma200=100.0, perp_price="100", cur_qty="0")
+    # повтор с фактической позицией = target → idempotent noop
+    p1 = _plan(idx_close=110.0, sma200=100.0, perp_price="100", cur_qty=str(p0.target_qty))
+    assert p1.action == "noop"
+
+
+def test_plan_quarter_budget_leverage_capped() -> None:
+    """target_qty не превышает 3x на доле 1/4 эквити (нотионал ≤ 3·share)."""
+    share = Decimal("25000")
+    p = _plan(
+        idx_close=110.0,
+        sma200=100.0,
+        perp_price="100",
+        cur_qty="0",
+        equity_share=str(share),
+    )
+    notional = p.target_qty * p.perp_price
+    assert notional <= share * Decimal("3") + Decimal("1")  # +1 округление
+
+
+def test_plan_equal_share_across_assets() -> None:
+    """Два ON-актива с одной долей 1/4 → одинаковый нотионал (доли ¼)."""
+    share = Decimal("25000")
+    a = _plan(idx_close=110.0, sma200=100.0, perp_price="100",
+              cur_qty="0", equity_share=str(share))  # fmt: skip
+    b = _plan(idx_close=220.0, sma200=200.0, perp_price="200",
+              cur_qty="0", equity_share=str(share))  # fmt: skip
+    # нотионал = qty*price; при равной доле и равном risk% должен совпадать
+    assert abs(a.target_qty * a.perp_price - b.target_qty * b.perp_price) <= Decimal("200")

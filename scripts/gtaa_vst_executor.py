@@ -166,6 +166,92 @@ def _log(row: dict[str, object]) -> None:
         fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
 
 
+@dataclass(frozen=True)
+class AssetPlan:
+    """Решение по одному активу (чистый расчёт, без сетевых вызовов)."""
+
+    label: str
+    perp: str
+    signal: str  # LONG | CASH
+    idx_close: float
+    sma200: float
+    perp_price: Decimal
+    stop_px: Decimal
+    liq_est: Decimal | None
+    cur_qty: Decimal
+    target_qty: Decimal
+    reject: str | None
+    action: str  # open_long | close | rebalance | noop
+
+
+def plan_asset_action(
+    asset: _Asset,
+    idx_close: float,
+    sma200: float,
+    perp_price: Decimal,
+    cur_qty: Decimal,
+    equity_share: Decimal,
+    engine: RiskEngine,
+    mmr: Decimal,
+    pnls: tuple[Decimal, Decimal, Decimal],
+    day_trades: int,
+    consecutive_losses: int,
+) -> AssetPlan:
+    """Чистая. Сигнал Faber → стоп (SMA200 на перпе) → target_qty
+    (RiskEngine на доле 1/N, клемп ≤3x) → решение реконсиляции.
+
+    Тестируемо без сети — ядро DEMO_CRITERIA 3 (сигнал) и 4 (доли 1/N).
+    """
+    day_pnl, week_pnl, month_pnl = pnls
+    sig_on = idx_close > sma200
+    sig_str = "LONG" if sig_on else "CASH"
+    stop_px = (perp_price * Decimal(str(sma200)) / Decimal(str(idx_close))).quantize(
+        Decimal("0.01")
+    )
+    target_qty = Decimal("0")
+    reject: str | None = None
+    liq_est: Decimal | None = None
+    if sig_on and perp_price > stop_px:
+        liq_est = estimate_liq_price(perp_price, Side.LONG, _MAX_LEV, mmr)
+        decision = engine.evaluate(
+            RiskInputs(
+                equity=equity_share,
+                day_pnl=day_pnl, week_pnl=week_pnl, month_pnl=month_pnl,
+                day_trades_count=day_trades,
+                consecutive_losses=consecutive_losses,
+                side=Side.LONG,
+                entry_price=perp_price,
+                stop_price=stop_px,
+                tier=RiskTier.B,
+                liquidation_price=liq_est,
+            )
+        )  # fmt: skip
+        if isinstance(decision, RiskRejection):
+            reject = f"{decision.code}: {decision.reason}"
+        else:
+            qmax = (equity_share * _MAX_LEV) / perp_price
+            target_qty = min(decision.quantity, qmax).quantize(Decimal("0.01"))
+    act = "noop" if reject else decide(sig_str, cur_qty, target_qty)
+    return AssetPlan(
+        label=asset.label, perp=asset.perp, signal=sig_str,
+        idx_close=idx_close, sma200=sma200, perp_price=perp_price,
+        stop_px=stop_px, liq_est=liq_est, cur_qty=cur_qty,
+        target_qty=target_qty, reject=reject, action=act,
+    )  # fmt: skip
+
+
+def _plan_to_row(p: AssetPlan) -> dict[str, object]:
+    """Лог-строка из плана (формат стабилен для аудита jsonl)."""
+    return {
+        "label": p.label, "perp": p.perp, "signal": p.signal,
+        "idx_close": p.idx_close, "sma200": p.sma200,
+        "perp_price": float(p.perp_price), "stop_px": str(p.stop_px),
+        "liq_est": str(p.liq_est) if p.liq_est else None,
+        "cur_qty": str(p.cur_qty), "target_qty": str(p.target_qty),
+        "decision": p.action, "reject": p.reject,
+    }  # fmt: skip
+
+
 def format_rebalance_summary(target_eom: date, rows: list[dict[str, object]]) -> str:
     """Чистая. Человекочитаемая сводка ребаланса для Telegram/лога."""
     ok = sum(1 for r in rows if r.get("status") == "ok")
@@ -288,65 +374,35 @@ async def _rebalance(
         rows_done: list[dict[str, object]] = []
         for a in _ASSETS:
             _idx_date, idx_close, sma200 = eoms[a.label]
-            sig_on = idx_close > sma200
-            sig_str = "LONG" if sig_on else "CASH"
-            pp_d = Decimal(str(perp_pxs[a.label]))
-            stop_px = (pp_d * Decimal(str(sma200)) / Decimal(str(idx_close))).quantize(
-                Decimal("0.01")
-            )
             poss = await api.get_positions(a.perp)
             cur_qty = sum((Decimal(str(p.position_amount)) for p in poss), Decimal("0"))
-            target_qty = Decimal("0")
-            reject: str | None = None
-            liq_est: Decimal | None = None
-            if sig_on and pp_d > stop_px:
-                liq_est = estimate_liq_price(pp_d, Side.LONG, _MAX_LEV, mmr)
-                decision = engine.evaluate(
-                    RiskInputs(
-                        equity=equity_share,
-                        day_pnl=day_pnl, week_pnl=week_pnl, month_pnl=month_pnl,
-                        day_trades_count=int(st.get("day_trades", "0")),
-                        consecutive_losses=int(st.get("consecutive_losses", "0")),
-                        side=Side.LONG,
-                        entry_price=pp_d,
-                        stop_price=stop_px,
-                        tier=RiskTier.B,
-                        liquidation_price=liq_est,
-                    )
-                )  # fmt: skip
-                if isinstance(decision, RiskRejection):
-                    reject = f"{decision.code}: {decision.reason}"
-                else:
-                    qmax = (equity_share * _MAX_LEV) / pp_d
-                    target_qty = min(decision.quantity, qmax).quantize(Decimal("0.01"))
-            act = "noop" if reject else decide(sig_str, cur_qty, target_qty)
-            row: dict[str, object] = {
-                "label": a.label, "perp": a.perp, "signal": sig_str,
-                "idx_close": idx_close, "sma200": sma200,
-                "perp_price": float(pp_d), "stop_px": str(stop_px),
-                "liq_est": str(liq_est) if liq_est else None,
-                "cur_qty": str(cur_qty), "target_qty": str(target_qty),
-                "decision": act, "reject": reject,
-            }  # fmt: skip
-            if dry or act == "noop":
-                rows_done.append(row | {"action": f"{'DRY:' if dry else ''}{act}", "status": "ok"})
+            plan = plan_asset_action(
+                a, idx_close, sma200, Decimal(str(perp_pxs[a.label])), cur_qty,
+                equity_share, engine, mmr, (day_pnl, week_pnl, month_pnl),
+                int(st.get("day_trades", "0")), int(st.get("consecutive_losses", "0")),
+            )  # fmt: skip
+            row = _plan_to_row(plan)
+            if dry or plan.action == "noop":
+                rows_done.append(
+                    row | {"action": f"{'DRY:' if dry else ''}{plan.action}", "status": "ok"}
+                )
                 continue
             try:
-                if act in ("close", "rebalance"):
+                if plan.action in ("close", "rebalance"):
                     await api.close_position(a.perp)
-                if act in ("open_long", "rebalance") and target_qty > 0:
+                if plan.action in ("open_long", "rebalance") and plan.target_qty > 0:
                     req = OrderRequest(
                         symbol=a.perp, side="BUY", position_side="LONG",
-                        order_type="MARKET", quantity=target_qty,
-                        attached_stop_loss=stop_px,
+                        order_type="MARKET", quantity=plan.target_qty,
+                        attached_stop_loss=plan.stop_px,
                     )  # hedge-режим, фикс #164  # fmt: skip
                     ack = await api.place_order(req)
                     row["order_ack"] = getattr(ack, "order_id", str(ack))
-                rows_done.append(row | {"action": act, "status": "ok"})
+                rows_done.append(row | {"action": plan.action, "status": "ok"})
                 st["day_trades"] = str(int(st.get("day_trades", "0")) + 1)
             except Exception as e:
                 rows_done.append(
-                    row | {"action": act, "status": "error",
+                    row | {"action": plan.action, "status": "error",
                            "err": f"{type(e).__name__}: {str(e)[:200]}"}
                 )  # fmt: skip
 
