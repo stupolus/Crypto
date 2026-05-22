@@ -33,6 +33,15 @@ if str(_ROOT) not in sys.path:
 
 _JOURNAL = _ROOT / "трейдер/журнал/journal.sqlite"
 _HWM = _ROOT / "трейдер/журнал/hwm.txt"
+_HEARTBEAT = _ROOT / "трейдер/журнал/heartbeat"
+
+
+def _heartbeat_age_min() -> float | None:
+    """Возраст heartbeat в минутах (живость раннера). None — нет файла."""
+    if not _HEARTBEAT.exists():
+        return None
+    age_s = datetime.now(UTC).timestamp() - _HEARTBEAT.stat().st_mtime
+    return round(age_s / 60, 1)
 
 
 def _journal_stats(db_path: Path) -> dict[str, object]:
@@ -134,6 +143,13 @@ def _drawdown(equity: Decimal | None) -> dict[str, object]:
 def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[str, object]) -> str:
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     lines = [f"📊 Трейдер-демо — {now}", f"Символ: {symbol}"]
+    hb = _heartbeat_age_min()
+    if hb is None:
+        lines.append("Живость: ⚠️ heartbeat не найден (раннер не запускался?)")
+    elif hb <= 40:  # 6h-бар + запас; touch каждые 30с
+        lines.append(f"Живость: ✅ heartbeat {hb} мин назад")
+    else:
+        lines.append(f"Живость: ⚠️ heartbeat {hb} мин назад (раннер мог зависнуть)")
     if b.get("ok"):
         lines += [
             f"Контур: BingX {b.get('env')} · equity={b.get('equity')} VST",
@@ -164,8 +180,16 @@ def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[st
         failures = cast("list[object]", j.get("failures") or [])
         if failures:
             lines.append(f"⚠️ Последние ошибки ордеров: {len(failures)}")
+        if j.get("total") == 0:
+            lines.append(
+                "0 сделок — ОЖИДАЕМО: liquidation_reversal редкая (в бэктесте "
+                "единицы сделок). Тишина ≠ сбой, если живость ✅. См. DEMO_CRITERIA §1."
+            )
     else:
-        lines.append("Журнал пуст (раннер ещё не писал ордера).")
+        lines.append(
+            "Журнал пуст (раннер ещё не писал ордера) — ожидаемо для редкой "
+            "стратегии; ориентир на живость выше."
+        )
     lines.append("\n(demo — не доказательство эджа; см. трейдер/DEMO_CRITERIA.md)")
     return "\n".join(lines)
 
