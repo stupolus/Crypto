@@ -96,6 +96,7 @@ testpaths = [
     "parsers/twitter/tests",
     "runners/tests",
     "scripts/tests",
+    "strategies/box_breakout/tests",
     "strategies/btc_breakout/tests",
     "strategies/composite_signal/tests",
     "strategies/trend_ema_4h/tests",
