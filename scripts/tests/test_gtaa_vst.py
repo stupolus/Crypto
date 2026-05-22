@@ -242,7 +242,7 @@ def test_plan_on_already_in_target_noop() -> None:
 
 
 def test_plan_quarter_budget_leverage_capped() -> None:
-    """target_qty не превышает 3x на доле 1/4 эквити (нотионал ≤ 3·share)."""
+    """target_qty не превышает 3x на доле 1/N эквити (нотионал ≤ 3·share)."""
     share = Decimal("25000")
     p = _plan(
         idx_close=110.0,
@@ -256,7 +256,7 @@ def test_plan_quarter_budget_leverage_capped() -> None:
 
 
 def test_plan_equal_share_across_assets() -> None:
-    """Два ON-актива с одной долей 1/4 → одинаковый нотионал (доли ¼)."""
+    """Два ON-актива с одной долей 1/N → одинаковый нотионал (равные доли)."""
     share = Decimal("25000")
     a = _plan(idx_close=110.0, sma200=100.0, perp_price="100",
               cur_qty="0", equity_share=str(share))  # fmt: skip
@@ -269,8 +269,16 @@ def test_plan_equal_share_across_assets() -> None:
 # --- format_preflight (read-only проверка перед запуском) ---
 
 
+def test_universe_includes_silver() -> None:
+    """DEMO_CRITERIA: универс = 5 активов, серебро (SI=F→NCCOXAG2USD) включено."""
+    by_label = {a.label: a for a in _ASSETS}
+    assert set(by_label) == {"GSPC", "NDX", "GC", "CL", "SI"}
+    assert by_label["SI"].perp == "NCCOXAG2USD-USDT"
+    assert by_label["SI"].yahoo == "SI%3DF"
+
+
 def test_format_preflight_ready() -> None:
-    """Все 4 актива + BingX OK + env=vst → ГОТОВ К ЗАПУСКУ."""
+    """Все активы универса + BingX OK + env=vst → ГОТОВ К ЗАПУСКУ."""
     rows = [(a.label, "2026-04-30", 110.0, 100.0, "LONG") for a in _ASSETS]
     txt = format_preflight("vst", rows, True, Decimal("100000"), [])
     assert "ГОТОВ К ЗАПУСКУ" in txt

@@ -161,9 +161,9 @@ def _build_default_registry() -> AssetRegistry:
                 max_leverage=3,
                 volatility_profile="normal",
                 min_notional_usdt=Decimal("10"),
-                # BingX VST: реальные имена. XAUT (Tether Gold) для золота.
-                # XAU/XAG/NCCOGOLD2USD оставлены для backwards-compat в коде.
-                base_symbols=("XAUT", "XAU", "XAG", "NCCOGOLD2USD"),
+                # BingX VST: реальные имена. XAUT (Tether Gold) для золота,
+                # NCCOXAG2USD — серебро (GTAA-универс). XAU/XAG — alias.
+                base_symbols=("XAUT", "XAU", "XAG", "NCCOGOLD2USD", "NCCOXAG2USD"),
             ),
             "energy": AssetConfig(
                 asset_class=AssetClass.ENERGY,

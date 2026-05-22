@@ -1,9 +1,10 @@
-"""Faber 2007 GTAA-4 на BingX VST — demo-исполнение (план 47.2). НЕ LIVE.
+"""Faber 2007 GTAA на BingX VST — demo-исполнение (план 47.2). НЕ LIVE.
 
-4 актива FIXED (план 45.3): ^GSPC→NCSISP500, ^NDX→NCSINASDAQ100,
-GC=F→NCCOGOLD, CL=F→NCCO1OILWTI. Сигнал Faber 200SMA на каждом
-Yahoo-индексе (без look-ahead), equal-weight 1/4 эквити per ON,
-ежемесячный ребаланс EOM. HARD-assert env==vst.
+5 активов (план 45.3 + серебро по решению владельца 2026-05-22):
+^GSPC→NCSISP500, ^NDX→NCSINASDAQ100, GC=F→NCCOGOLD, CL=F→NCCO1OILWTI,
+SI=F→NCCOXAG. Сигнал Faber 200SMA на каждом Yahoo-индексе (без
+look-ahead), equal-weight 1/N эквити per ON, ежемесячный ребаланс
+EOM. HARD-assert env==vst.
 
 Идемпотентность: state.last_rebalance_eom; ребаланс только когда
 максимальная Yahoo-EOM-дата по 4 активам > state. Daily-timer
@@ -51,6 +52,7 @@ _ASSETS: tuple[_Asset, ...] = (
     _Asset("NDX", "%5ENDX", "NCSINASDAQ1002USD-USDT"),
     _Asset("GC", "GC%3DF", "NCCOGOLD2USD-USDT"),
     _Asset("CL", "CL%3DF", "NCCO1OILWTI2USD-USDT"),
+    _Asset("SI", "SI%3DF", "NCCOXAG2USD-USDT"),
 )
 _N = Decimal(len(_ASSETS))
 _SMA = 200
@@ -293,7 +295,7 @@ async def _run(dry: bool) -> None:
             print(f"HALTED: {_HALT} существует.")
             return
 
-        # 1. Yahoo сигналы для 4 индексов
+        # 1. Yahoo сигналы по всем индексам
         eoms: dict[str, tuple[date, float, float]] = {}
         for a in _ASSETS:
             try:
@@ -314,7 +316,7 @@ async def _run(dry: bool) -> None:
                 return
             eoms[a.label] = e_eom
 
-        # 2. Триггер ребаланса: max EOM по 4 индексам vs state
+        # 2. Триггер ребаланса: max EOM по всем индексам vs state
         target_eom = max(d for (d, _c, _s) in eoms.values())
         prev = json.loads(_STATE.read_text()) if _STATE.exists() else {}
         if not should_rebalance(target_eom, prev.get("last_rebalance_eom")):
