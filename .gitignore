@@ -112,3 +112,4 @@ scripts/yt_transcripts/work/
 трейдер/журнал/*.sqlite-journal
 трейдер/журнал/*.jsonl
 трейдер/журнал/heartbeat
+трейдер/журнал/hwm.txt
