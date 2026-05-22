@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+import pytest
 
 from scripts import gtaa_vst_executor
 from scripts.gtaa_vst_executor import (
+    format_rebalance_summary,
     is_halted,
     latest_eom_with_sma,
     should_rebalance,
 )
+from scripts.gtaa_vst_report import build_report
 
 
 def _make_daily(n: int, start: date = date(2026, 1, 1)) -> list[tuple[date, float]]:
@@ -79,3 +84,87 @@ def test_kill_switch(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-
     assert is_halted() is False
     halt.write_text("stop")
     assert is_halted() is True
+
+
+def test_http_get_json_retries_then_succeeds(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """2 сбоя сети → 3-я попытка успешна. Без реальных пауз."""
+    calls = {"n": 0}
+
+    class _FakeResp:
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *a: object) -> None:
+            return None
+
+    def _fake_urlopen(req: object, timeout: float = 0) -> _FakeResp:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise OSError("network down")
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    monkeypatch.setattr("json.load", lambda fh: {"ok": True})
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    assert gtaa_vst_executor._http_get_json("http://x") == {"ok": True}
+    assert calls["n"] == 3
+
+
+def test_http_get_json_gives_up(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Все попытки провалены → пробрасывает последнее исключение."""
+
+    def _always_fail(req: object, timeout: float = 0) -> object:
+        raise OSError("boom")
+
+    monkeypatch.setattr("urllib.request.urlopen", _always_fail)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    with pytest.raises(OSError, match="boom"):
+        gtaa_vst_executor._http_get_json("http://x", retries=3)
+
+
+def test_format_rebalance_summary() -> None:
+    rows: list[dict[str, object]] = [
+        {"label": "GSPC", "signal": "LONG", "action": "open_long", "status": "ok"},
+        {"label": "GC", "signal": "CASH", "action": "noop", "status": "ok"},
+        {"label": "CL", "signal": "LONG", "action": "rebalance", "status": "error"},
+    ]
+    s = format_rebalance_summary(date(2026, 5, 29), rows)
+    assert "EOM=2026-05-29" in s
+    assert "2/3 ok" in s
+    assert "GSPC:LONG→open_long[ok]" in s
+    assert "CL:LONG→rebalance[error]" in s
+
+
+def test_build_report_healthy() -> None:
+    txt = build_report(
+        now=datetime(2026, 5, 22, 21, 45, tzinfo=UTC),
+        fired_24h=1,
+        last_eom="2026-04-30",
+        halted=False,
+        errors_24h=[],
+        positions={"GSPC": Decimal("0.5"), "GC": Decimal("0")},
+        equity=Decimal("100000"),
+    )
+    assert "timer: OK" in txt
+    assert "GSPC=ON 0.5" in txt
+    assert "GC=cash" in txt
+    assert "ошибок/24ч: 0" in txt
+    assert "HALT" not in txt
+
+
+def test_build_report_flags_no_heartbeat_and_errors() -> None:
+    txt = build_report(
+        now=datetime(2026, 5, 22, 21, 45, tzinfo=UTC),
+        fired_24h=0,
+        last_eom=None,
+        halted=True,
+        errors_24h=[{"label": "NDX", "err": "Timeout"}],
+        positions={},
+        equity=None,
+    )
+    assert "НЕТ СРАБАТЫВАНИЙ" in txt
+    assert "HALT активен" in txt
+    assert "ошибок/24ч: 1" in txt
+    assert "NDX: Timeout" in txt
+    assert "позиции не получены" in txt

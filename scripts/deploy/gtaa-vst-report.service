@@ -1,0 +1,23 @@
+[Unit]
+Description=Crypto bot — GTAA-4 VST ежедневный отчёт (план 47.3, только чтение)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto
+EnvironmentFile=/etc/crypto/.env
+ExecStart=/opt/crypto/.venv/bin/python -m scripts.gtaa_vst_report
+
+# Безопасность (зеркало gtaa-vst.service)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/crypto/ops
+ProtectHome=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gtaa-vst-report

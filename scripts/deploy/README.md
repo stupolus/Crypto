@@ -98,29 +98,67 @@ NCCO1OILWTI (нефть). Faber 200SMA-сигнал per Yahoo-индекс,
 
 **Миграция на VPS** (после git pull main):
 ```bash
-# на VPS:
+# на VPS — копировать-вставить целиком:
+set -e
 cd /opt/crypto && sudo -u crypto git pull origin main
-sudo bash scripts/deploy/install.sh           # ставит gtaa-vst.{service,timer}
-sudo systemctl disable --now faber-vst.timer  # стопаем Faber-single
-sudo systemctl enable --now gtaa-vst.timer    # включаем GTAA-4
+sudo bash scripts/deploy/install.sh                  # ставит gtaa-vst.* + report
+sudo systemctl disable --now faber-vst.timer         # стопаем Faber-single
+sudo systemctl enable  --now gtaa-vst.timer          # GTAA-4 исполнитель
+sudo systemctl enable  --now gtaa-vst-report.timer   # ежедневный отчёт
 ```
 
 Проверка:
 ```bash
-systemctl list-timers | grep -E 'faber|gtaa'  # gtaa в очереди, faber inactive
+systemctl list-timers | grep -E 'faber|gtaa'     # gtaa в очереди, faber inactive
+systemctl is-enabled gtaa-vst.timer              # должно быть: enabled
 journalctl -u gtaa-vst -n 30 --no-pager
 sudo -u crypto tail -n 8 /opt/crypto/ops/gtaa_vst.jsonl
+# Прогнать отчёт вручную прямо сейчас (не дожидаясь таймера):
+sudo systemctl start gtaa-vst-report.service && journalctl -u gtaa-vst-report -n 20 --no-pager
 ```
 
-Daily-trigger 21:30 UTC + state-tracking `last_rebalance_eom` →
-ровно один ребаланс/месяц (на следующем триггере после новой
-EOM-даты по Yahoo). Persistent=true нагоняет пропуск при
-простое. Идемпотентно.
+Daily-trigger 21:30 UTC (отчёт 21:45) + state-tracking
+`last_rebalance_eom` → ровно один ребаланс/месяц (на следующем
+триггере после новой EOM-даты по Yahoo). Идемпотентно: повтор в
+том же месяце = `noop`.
+
+**Переживание ребута VPS.** `enable` прописывает таймер в
+`timers.target` (автозапуск при загрузке). `Persistent=true` →
+если VPS был выключен в момент триггера, прогон выполнится сразу
+после включения. Дополнительных действий не нужно — проверить:
+`systemctl is-enabled gtaa-vst.timer` = `enabled`.
 
 Kill-switch (отдельный от Faber):
 ```bash
-touch /opt/crypto/ops/gtaa_HALT          # мгновенный стоп
+touch /opt/crypto/ops/gtaa_HALT          # мгновенный стоп ордеров
 rm    /opt/crypto/ops/gtaa_HALT          # снять предохранитель
 ```
 
-Артефакты: `ops/gtaa_vst.jsonl`, `ops/gtaa_vst_state.json`.
+### Telegram-уведомления (опционально, рекомендуется)
+
+Без ключей бот пишет в journald (StdoutAlerter) и НЕ падает.
+С ключами — шлёт ребаланс/ошибки + ежедневный отчёт в чат.
+Настройка (см. `docs/telegram-setup.md`):
+1. `@BotFather` → `/newbot` → токен.
+2. Написать боту любое сообщение, затем
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` → `chat.id`.
+3. В `/etc/crypto/.env` добавить:
+   `TELEGRAM_BOT_TOKEN=...` и `TELEGRAM_CHAT_ID=...`.
+4. `sudo systemctl start gtaa-vst-report.service` — придёт отчёт.
+
+### Рунбук: типичные ошибки и фиксы
+
+| Симптом | Причина | Фикс |
+|---|---|---|
+| `STOP: BINGX_ENV=...` в логе | в `.env` не `vst` | поправить `BINGX_ENV=vst`, рестарт не нужен (oneshot) |
+| `skip: нет цены перпа` | BingX klines недоступны | транзиентно (ретраи 2/4/8s исчерпаны); сработает на след. триггере |
+| `skip: yahoo ... недоступен` | Yahoo лаг/блок | то же; идемпотентно догонит |
+| `noop` каждый день | уже ребалансировано в этом месяце | норма — ребаланс раз/мес |
+| `status:"error"` + `position side` | hedge-режим не включён | проверить #164-фикс развёрнут (`git log`), позиции в hedge |
+| отчёт `НЕТ СРАБАТЫВАНИЙ` | таймер не сработал/выключен | `systemctl status gtaa-vst.timer`; `enable --now` |
+| отчёт `позиции не получены` | BingX API недоступен при отчёте | проверить ключи/сеть; на исполнение не влияет |
+
+Артефакты: `ops/gtaa_vst.jsonl` (heartbeat `fired` + решения +
+ошибки), `ops/gtaa_vst_state.json` (`last_rebalance_eom` +
+период-стейт брейкеров). Критерии приёмки и шаблон вердикта —
+`plans/47-gtaa-vst-executor.md` → DEMO_CRITERIA.
