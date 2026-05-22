@@ -431,7 +431,72 @@ async def _rebalance(
         )
 
 
+def format_preflight(
+    env: str,
+    sig_rows: list[tuple[str, str, float, float, str]],
+    bingx_ok: bool,
+    equity: Decimal | None,
+    errors: list[str],
+) -> str:
+    """Чистая. Текст preflight-проверки (тестируемо без сети).
+
+    sig_rows: (label, eom_date, close, sma200, signal). Печатает по
+    каждому активу для ручной сверки SMA200 с Yahoo (DEMO_CRITERIA 2/3).
+    """
+    lines = ["GTAA-VST preflight (read-only, без ордеров)"]
+    lines.append(f"env: {env}" + ("" if env == "vst" else "  ⚠️ ОЖИДАЛОСЬ vst!"))
+    for label, eom, close, sma, sig in sig_rows:
+        lines.append(f"  {label}: EOM={eom} close={close:.2f} sma200={sma:.2f} → {sig}")
+    lines.append(f"BingX VST: {'OK' if bingx_ok else 'НЕТ СВЯЗИ'}")
+    if equity is not None:
+        lines.append(f"equity: {equity}")
+    if errors:
+        lines.append("ОШИБКИ: " + "; ".join(errors))
+    ok = env == "vst" and bingx_ok and not errors and len(sig_rows) == len(_ASSETS)
+    lines.append("ИТОГ: ГОТОВ К ЗАПУСКУ" if ok else "ИТОГ: ЕСТЬ ПРОБЛЕМЫ (см. выше)")
+    return "\n".join(lines)
+
+
+async def _preflight() -> int:
+    """Read-only проверка: сигналы по 4 активам + связь с BingX VST.
+    Не ставит ордера, не пишет стейт, не шлёт алерты. exit 0 = готов."""
+    s = BingXSettings()
+    errors: list[str] = []
+    sig_rows: list[tuple[str, str, float, float, str]] = []
+    for a in _ASSETS:
+        try:
+            eom = latest_eom_with_sma(_fetch_yahoo_daily(a.yahoo))
+        except Exception as e:
+            errors.append(f"{a.label}: yahoo {type(e).__name__}")
+            continue
+        if eom is None:
+            errors.append(f"{a.label}: нет истории для SMA200")
+            continue
+        d, close, sma = eom
+        sig_rows.append((a.label, d.isoformat(), close, sma, "LONG" if close > sma else "CASH"))
+
+    bingx_ok = False
+    equity: Decimal | None = None
+    if s.env == "vst":
+        try:
+            async with BingXClient(settings=s) as c:
+                bal = await PrivateAPI(c).get_balance()
+                equity = next(
+                    (Decimal(str(b.equity)) for b in bal if b.asset in ("USDT", "VST")),
+                    Decimal(str(bal[0].equity)) if bal else None,
+                )
+                bingx_ok = True
+        except Exception as e:
+            errors.append(f"BingX: {type(e).__name__}")
+
+    text = format_preflight(s.env, sig_rows, bingx_ok, equity, errors)
+    print(text)
+    return 0 if text.endswith("ГОТОВ К ЗАПУСКУ") else 1
+
+
 def main() -> None:
+    if "--check" in sys.argv:
+        sys.exit(asyncio.run(_preflight()))
     dry = "--dry" in sys.argv
     asyncio.run(_run(dry))
     print("VST demo-исполнение (план 47). НЕ live.")

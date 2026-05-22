@@ -117,6 +117,15 @@ sudo -u crypto tail -n 8 /opt/crypto/ops/gtaa_vst.jsonl
 sudo systemctl start gtaa-vst-report.service && journalctl -u gtaa-vst-report -n 20 --no-pager
 ```
 
+**Preflight (read-only, рекомендуется сразу после установки).** Печатает
+по 4 активам EOM-дату, close, SMA200, сигнал + связь с BingX VST. Не
+ставит ордера, не пишет стейт. Для ручной сверки SMA200 с Yahoo
+(DEMO_CRITERIA 2/3):
+```bash
+sudo -u crypto /opt/crypto/.venv/bin/python -m scripts.gtaa_vst_executor --check
+# ИТОГ: ГОТОВ К ЗАПУСКУ  → данные и связь в порядке
+```
+
 Daily-trigger 21:30 UTC (отчёт 21:45) + state-tracking
 `last_rebalance_eom` → ровно один ребаланс/месяц (на следующем
 триггере после новой EOM-даты по Yahoo). Идемпотентно: повтор в

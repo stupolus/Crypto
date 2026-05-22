@@ -12,6 +12,7 @@ from scripts import gtaa_vst_executor
 from scripts.gtaa_vst_executor import (
     _ASSETS,
     AssetPlan,
+    format_preflight,
     format_rebalance_summary,
     is_halted,
     latest_eom_with_sma,
@@ -261,3 +262,31 @@ def test_plan_equal_share_across_assets() -> None:
               cur_qty="0", equity_share=str(share))  # fmt: skip
     # нотионал = qty*price; при равной доле и равном risk% должен совпадать
     assert abs(a.target_qty * a.perp_price - b.target_qty * b.perp_price) <= Decimal("200")
+
+
+# --- format_preflight (read-only проверка перед запуском) ---
+
+
+def test_format_preflight_ready() -> None:
+    """Все 4 актива + BingX OK + env=vst → ГОТОВ К ЗАПУСКУ."""
+    rows = [(a.label, "2026-04-30", 110.0, 100.0, "LONG") for a in _ASSETS]
+    txt = format_preflight("vst", rows, True, Decimal("100000"), [])
+    assert "ГОТОВ К ЗАПУСКУ" in txt
+    assert "sma200=100.00 → LONG" in txt
+    assert "BingX VST: OK" in txt
+
+
+def test_format_preflight_flags_problems() -> None:
+    """env!=vst или ошибки/неполные данные → ЕСТЬ ПРОБЛЕМЫ."""
+    txt = format_preflight("live", [], False, None, ["GSPC: yahoo Timeout"])
+    assert "ЕСТЬ ПРОБЛЕМЫ" in txt
+    assert "ОЖИДАЛОСЬ vst" in txt
+    assert "НЕТ СВЯЗИ" in txt
+    assert "GSPC: yahoo Timeout" in txt
+
+
+def test_format_preflight_incomplete_not_ready() -> None:
+    """env=vst, BingX OK, но не все 4 актива → НЕ готов."""
+    rows = [("GSPC", "2026-04-30", 110.0, 100.0, "LONG")]
+    txt = format_preflight("vst", rows, True, Decimal("100000"), [])
+    assert "ЕСТЬ ПРОБЛЕМЫ" in txt
