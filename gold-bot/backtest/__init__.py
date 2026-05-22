@@ -6,6 +6,13 @@ from backtest.costs import CostModel
 from backtest.engine import BacktestEngine, BacktestResult, Trade
 from backtest.metrics import Metrics, compute_metrics
 from backtest.strategy import Signal, Strategy
+from backtest.walkforward import (
+    WalkForwardReport,
+    Window,
+    WindowResult,
+    make_windows,
+    run_walk_forward,
+)
 
 __all__ = [
     "BacktestEngine",
@@ -15,5 +22,10 @@ __all__ = [
     "Signal",
     "Strategy",
     "Trade",
+    "WalkForwardReport",
+    "Window",
+    "WindowResult",
     "compute_metrics",
+    "make_windows",
+    "run_walk_forward",
 ]
