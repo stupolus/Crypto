@@ -461,13 +461,21 @@ class PrivateAPI:
         # для обоих. Хардкод "BOTH" падал в hedge mode с code=109400
         # «PositionSide can only be set to LONG or SHORT» на TradFi-перпах
         # (NCSI*/NCCO*/NCFX*), которые на VST доступны только в hedge.
+        #
+        # reduceOnly валиден ТОЛЬКО в one-way (positionSide=="BOTH"). В hedge
+        # BingX отвергает поле с code=109400 «In the Hedge mode, the
+        # 'ReduceOnly' field can not be filled» — там закрытие задаётся
+        # самим positionSide + противоположным side, без reduceOnly.
+        # (найдено живым прогоном GTAA-VST на NCSINASDAQ100.)
+        one_way = target.position_side == "BOTH"
         close_req = OrderRequest(
             symbol=symbol,
             side=close_side,
             position_side=target.position_side,
             order_type="MARKET",
             quantity=qty,
-            reduce_only=True,
+            reduce_only=one_way,  # wire-флаг reduceOnly: только one-way
+            closes_position=True,  # семантика close (снимает инвариант entry-стопа)
         )
         return await self.place_order(close_req)
 

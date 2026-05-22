@@ -424,6 +424,11 @@ class OrderRequest(_StrictModel):
     quantity: Decimal
     price: Decimal | None = None
     reduce_only: bool = False
+    # Семантический флаг «этот ордер закрывает позицию». Отделён от
+    # reduce_only: в hedge-режиме закрытие задаётся positionSide+side БЕЗ
+    # wire-флага reduceOnly (BingX отвергает его с code=109400). Не
+    # сериализуется в запрос — только снимает инвариант «entry без стопа».
+    closes_position: bool = False
     time_in_force: TimeInForce = "GTC"
     attached_stop_loss: Decimal | None = None
     attached_take_profit: Decimal | None = None
@@ -459,11 +464,14 @@ class OrderRequest(_StrictModel):
             raise ValueError("LIMIT order requires price")
         if self.order_type == "MARKET" and self.price is not None:
             raise ValueError("MARKET order must not have price")
-        if self.reduce_only:
+        # Closing-ордер = reduce_only (one-way) ИЛИ closes_position (hedge).
+        # Оба не несут защитных ордеров; только entry обязан иметь стоп.
+        is_close = self.reduce_only or self.closes_position
+        if is_close:
             if self.attached_stop_loss is not None:
-                raise ValueError("reduce_only order must not carry attached stop_loss")
+                raise ValueError("close order must not carry attached stop_loss")
             if self.attached_take_profit is not None:
-                raise ValueError("reduce_only order must not carry attached take_profit")
+                raise ValueError("close order must not carry attached take_profit")
         else:
             if self.attached_stop_loss is None:
                 raise ValueError(
