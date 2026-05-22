@@ -1,7 +1,9 @@
 """Адаптер BingX (USDT-перпы) поверх ccxt.
 
-BingX не имеет полноценного публичного testnet — в фазе 1F работаем в
-dry-run/paper. Клиента можно внедрить (для тестов), иначе создаётся ccxt.bingx.
+BingX имеет VST (demo / виртуальные средства) — отдельный endpoint
+open-api-vst.bingx.com через ccxt sandbox mode. По умолчанию vst=True
+(безопасный дефолт, см. CLAUDE.md §9). Live — только явным vst=False.
+Клиента можно внедрить (для тестов), иначе создаётся ccxt.bingx.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ class BingXAdapter(CcxtAdapter):
         api_key: str = "",
         api_secret: str = "",
         *,
+        vst: bool = True,
         client: Any | None = None,
     ) -> None:
         if client is None:
@@ -32,4 +35,6 @@ class BingXAdapter(CcxtAdapter):
                     "options": {"defaultType": "swap"},
                 }
             )
+            if vst:
+                client.set_sandbox_mode(True)
         super().__init__(client)

@@ -1,10 +1,10 @@
 """Smoke-проверка биржевого адаптера: публичные данные + (если ключи) баланс.
 
 Запуск из каталога gold-bot:
-    python -m scripts.smoke_exchange --exchange bybit --symbol BTC/USDT:USDT
+    python -m scripts.smoke_exchange --exchange bingx --symbol BTC/USDT:USDT
 
-Ключи берутся из env: {EXCHANGE}_API_KEY / {EXCHANGE}_API_SECRET
-(например BYBIT_API_KEY). Для Bybit testnet: BYBIT_TESTNET=1.
+BingX по умолчанию — VST (demo), читает BINGX_VST_API_KEY/SECRET. Live только
+при BINGX_LIVE=1 (BINGX_API_KEY/SECRET). Bybit: BYBIT_API_KEY/SECRET, testnet — BYBIT_TESTNET=1.
 Без ключей печатает только публичные данные (markets, ticker).
 """
 
@@ -22,13 +22,25 @@ _TRUE = {"1", "true", "yes"}
 
 
 def _build(exchange: str) -> CcxtAdapter:
-    prefix = exchange.upper()
-    key = os.environ.get(f"{prefix}_API_KEY", "")
-    secret = os.environ.get(f"{prefix}_API_SECRET", "")
     if exchange == "bingx":
-        return BingXAdapter(key, secret)
+        # Дефолт — VST (demo). Live только явным BINGX_LIVE=1.
+        if os.environ.get("BINGX_LIVE", "").lower() in _TRUE:
+            return BingXAdapter(
+                os.environ.get("BINGX_API_KEY", ""),
+                os.environ.get("BINGX_API_SECRET", ""),
+                vst=False,
+            )
+        return BingXAdapter(
+            os.environ.get("BINGX_VST_API_KEY", ""),
+            os.environ.get("BINGX_VST_API_SECRET", ""),
+            vst=True,
+        )
     testnet = os.environ.get("BYBIT_TESTNET", "").lower() in _TRUE
-    return BybitAdapter(key, secret, testnet=testnet)
+    return BybitAdapter(
+        os.environ.get("BYBIT_API_KEY", ""),
+        os.environ.get("BYBIT_API_SECRET", ""),
+        testnet=testnet,
+    )
 
 
 async def _run(exchange: str, symbol: str) -> None:

@@ -3,7 +3,7 @@
 Запуск из каталога gold-bot:
     python -m scripts.download_klines --exchange bybit --symbol BTC-USDT --timeframe 15m --months 6
 
-Ключи (для публичных свечей не нужны) — из env, как в smoke_exchange.
+Ключи (для публичных свечей не нужны) — из env, как в smoke_exchange (BingX VST по умолчанию).
 Файл кладётся в gold-bot/data/candles/{exchange}/{symbol}/{tf}.parquet.
 """
 
@@ -26,13 +26,25 @@ _MONTH_MS = 30 * 86_400_000
 
 
 def _build(exchange: str) -> CcxtAdapter:
-    prefix = exchange.upper()
-    key = os.environ.get(f"{prefix}_API_KEY", "")
-    secret = os.environ.get(f"{prefix}_API_SECRET", "")
     if exchange == "bingx":
-        return BingXAdapter(key, secret)
+        # Дефолт — VST (demo). Live только явным BINGX_LIVE=1.
+        if os.environ.get("BINGX_LIVE", "").lower() in _TRUE:
+            return BingXAdapter(
+                os.environ.get("BINGX_API_KEY", ""),
+                os.environ.get("BINGX_API_SECRET", ""),
+                vst=False,
+            )
+        return BingXAdapter(
+            os.environ.get("BINGX_VST_API_KEY", ""),
+            os.environ.get("BINGX_VST_API_SECRET", ""),
+            vst=True,
+        )
     testnet = os.environ.get("BYBIT_TESTNET", "").lower() in _TRUE
-    return BybitAdapter(key, secret, testnet=testnet)
+    return BybitAdapter(
+        os.environ.get("BYBIT_API_KEY", ""),
+        os.environ.get("BYBIT_API_SECRET", ""),
+        testnet=testnet,
+    )
 
 
 async def _run(exchange: str, symbol: str, timeframe: str, months: int) -> None:
