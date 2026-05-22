@@ -1,17 +1,17 @@
 """Скачать исторические свечи и сохранить в parquet.
 
 Запуск из каталога gold-bot:
-    python -m scripts.download_klines --exchange bybit --symbol BTC-USDT --timeframe 15m --months 6
+    python -m scripts.download_klines --exchange bingx --symbol BTC/USDT:USDT --timeframe 15m --months 12
 
-Ключи (для публичных свечей не нужны) — из env, как в smoke_exchange (BingX VST по умолчанию).
-Файл кладётся в gold-bot/data/candles/{exchange}/{symbol}/{tf}.parquet.
+Свечи публичны → берутся с ПРОДАКШН-эндпоинта без ключей (VST/demo исторические
+свечи не отдаёт; бэктесту нужна реальная история). Файл кладётся в
+gold-bot/data/candles/{exchange}/{symbol}/{tf}.parquet.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import time
 from pathlib import Path
 
@@ -20,38 +20,30 @@ from exchanges.bybit import BybitAdapter
 from exchanges.ccxt_base import CcxtAdapter
 from marketdata.candles import candles_path, download_ohlcv, save_parquet
 
-_TRUE = {"1", "true", "yes"}
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 _MONTH_MS = 30 * 86_400_000
 
 
 def _build(exchange: str) -> CcxtAdapter:
+    # Исторические свечи публичны: продакшн-эндпоинт, без ключей, без VST/testnet.
     if exchange == "bingx":
-        # Дефолт — VST (demo). Live только явным BINGX_LIVE=1.
-        if os.environ.get("BINGX_LIVE", "").lower() in _TRUE:
-            return BingXAdapter(
-                os.environ.get("BINGX_API_KEY", ""),
-                os.environ.get("BINGX_API_SECRET", ""),
-                vst=False,
-            )
-        return BingXAdapter(
-            os.environ.get("BINGX_VST_API_KEY", ""),
-            os.environ.get("BINGX_VST_API_SECRET", ""),
-            vst=True,
-        )
-    testnet = os.environ.get("BYBIT_TESTNET", "").lower() in _TRUE
-    return BybitAdapter(
-        os.environ.get("BYBIT_API_KEY", ""),
-        os.environ.get("BYBIT_API_SECRET", ""),
-        testnet=testnet,
-    )
+        return BingXAdapter("", "", vst=False)
+    return BybitAdapter("", "", testnet=False)
 
 
 async def _run(exchange: str, symbol: str, timeframe: str, months: int) -> None:
     adapter = _build(exchange)
     try:
+        await adapter.fetch_markets()  # прогрев рынков, чтобы символ резолвился
         start_ms = int(time.time() * 1000) - months * _MONTH_MS
         candles = await download_ohlcv(adapter, symbol, timeframe, start_ms=start_ms)
+        if not candles:
+            print(
+                f"[{exchange}] {symbol} {timeframe}: 0 свечей. "
+                "Проверь символ (есть ли в fetch_markets) и глубину истории биржи "
+                "(BingX отдаёт ограниченное прошлое — попробуй меньше --months)."
+            )
+            return
         path = candles_path(_DATA_DIR, exchange, symbol, timeframe)
         save_parquet(candles, path)
         print(f"[{exchange}] {symbol} {timeframe}: {len(candles)} свечей → {path}")
