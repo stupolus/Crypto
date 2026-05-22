@@ -74,6 +74,9 @@ def _journal_stats(db_path: Path) -> dict[str, object]:
 
 
 async def _bingx_snapshot(symbol: str) -> dict[str, object]:
+    """Снимок BingX. Баланс и позиции — РАЗДЕЛЬНО: троттл эндпоинта
+    позиций (BingX 100410) не должен скрывать equity.
+    """
     try:
         from adapters.bingx.client import BingXClient
         from adapters.bingx.private import PrivateAPI
@@ -82,26 +85,33 @@ async def _bingx_snapshot(symbol: str) -> dict[str, object]:
         settings = BingXSettings()
         async with BingXClient(settings=settings) as client:
             api = PrivateAPI(client)
-            balances = await api.get_balance()
-            positions = await api.get_positions(symbol=symbol)
-        bal = next((b for b in balances if b.asset in ("VST", "USDT")), None)
-        open_pos = [p for p in positions if p.position_amount != 0]
-        return {
-            "ok": True,
-            "env": settings.env,
-            "equity": bal.equity if bal else None,
-            "realised": bal.realised_profit if bal else None,
-            "unrealised": bal.unrealized_profit if bal else None,
-            "open_positions": [
-                {
-                    "symbol": p.symbol,
-                    "amount": str(p.position_amount),
-                    "entry": str(p.average_price),
-                    "upnl": str(p.unrealized_profit),
-                }
-                for p in open_pos
-            ],
-        }
+            out: dict[str, object] = {"ok": True, "env": settings.env}
+            # Баланс (главное — equity).
+            try:
+                balances = await api.get_balance()
+                bal = next((b for b in balances if b.asset in ("VST", "USDT")), None)
+                out["equity"] = bal.equity if bal else None
+                out["realised"] = bal.realised_profit if bal else None
+                out["unrealised"] = bal.unrealized_profit if bal else None
+            except Exception as e:
+                out["ok"] = False
+                out["error"] = f"balance: {type(e).__name__}: {e}"
+            # Позиции (best-effort: троттл/ошибка не валит equity).
+            try:
+                positions = await api.get_positions(symbol=symbol)
+                out["open_positions"] = [
+                    {
+                        "symbol": p.symbol,
+                        "amount": str(p.position_amount),
+                        "entry": str(p.average_price),
+                        "upnl": str(p.unrealized_profit),
+                    }
+                    for p in positions
+                    if p.position_amount != 0
+                ]
+            except Exception as e:
+                out["positions_error"] = f"{type(e).__name__}: {e}"
+            return out
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
@@ -131,15 +141,18 @@ def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[st
         ]
         if dd.get("hwm") is not None:
             lines.append(f"Просадка от пика: {dd['drawdown_pct']:.2f}% (HWM {dd['hwm']})")
-        ops = cast("list[dict[str, str]]", b.get("open_positions") or [])
-        lines.append(
-            "Открытых позиций: "
-            + (
-                ", ".join(f"{o['symbol']} {o['amount']} (uPnL {o['upnl']})" for o in ops)
-                if ops
-                else "нет"
+        if b.get("positions_error"):
+            lines.append(f"Открытых позиций: н/д (BingX троттл: {b['positions_error']})")
+        else:
+            ops = cast("list[dict[str, str]]", b.get("open_positions") or [])
+            lines.append(
+                "Открытых позиций: "
+                + (
+                    ", ".join(f"{o['symbol']} {o['amount']} (uPnL {o['upnl']})" for o in ops)
+                    if ops
+                    else "нет"
+                )
             )
-        )
     else:
         lines.append(f"⚠️ BingX недоступен: {b.get('error')}")
     if j.get("exists"):
