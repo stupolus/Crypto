@@ -18,10 +18,15 @@
 **Запускать только на VST** до явного решения по live. Проверяется
 переменной `BINGX_ENV` в `.env`.
 
+Идемпотентность при старте: позиция синхронизируется с биржей
+(`_sync_initial_position` → `get_positions`), чтобы рестарт с открытой
+позицией не задвоил вход. Equity/позиции далее правит reconcile из
+user-stream. WS/user-stream — авто-reconnect с backoff; падение
+процесса — авто-рестарт через systemd (см. трейдер/раннеры/DEPLOY.md).
+
 Что НЕ делает этот runner (отложено):
-- Не делает initial state restore из journal (если процесс упал во время
-  открытой позиции — нужно вручную проверить через `api.get_positions`
-  перед перезапуском).
+- Не восстанавливает SL/TP из journal (seed-позиция имеет stop_price=0;
+  стратегия ведёт выход по своей логике / биржевым ордерам).
 - Не интегрирует RiskEngine на уровне runner'а — стратегия сама зовёт его.
 - Не делает graceful drain на сигнал SIGTERM (используется только KeyboardInterrupt).
 """
@@ -312,6 +317,24 @@ async def _fetch_equity(private_api: PrivateAPI) -> Decimal:
     return balances[0].equity
 
 
+async def _sync_initial_position(private_api: PrivateAPI, symbol: str) -> OpenPosition | None:
+    """Стартовая синхронизация позиции с биржей (идемпотентность).
+
+    Если процесс перезапустился с открытой позицией — seed'им её в
+    RunnerState, чтобы стратегия не задвоила вход. Best-effort: ошибка
+    не валит старт (вернём None, reconcile из user-stream поправит).
+    """
+    try:
+        positions = await private_api.get_positions(symbol=symbol)
+    except Exception:
+        logger.exception("startup position sync failed (продолжаю без seed)")
+        return None
+    non_zero = [p for p in positions if p.position_amount != 0]
+    if not non_zero:
+        return None
+    return _build_open_position_from_position(non_zero[0])
+
+
 async def run(args: argparse.Namespace) -> None:
     settings = BingXSettings()
     if settings.env == "live":
@@ -340,7 +363,15 @@ async def run(args: argparse.Namespace) -> None:
         equity = await _fetch_equity(private_api)
         logger.info("starting equity: %s", equity)
 
-        state = RunnerState(candles_history=history, equity=equity)
+        open_pos = await _sync_initial_position(private_api, args.symbol)
+        if open_pos is not None:
+            logger.info(
+                "startup: восстановлена открытая позиция %s side=%s qty=%s (дубль-вход исключён)",
+                args.symbol,
+                open_pos.side,
+                open_pos.quantity,
+            )
+        state = RunnerState(candles_history=history, equity=equity, open_position=open_pos)
 
         stop_event = asyncio.Event()
         _install_signal_handlers(stop_event)

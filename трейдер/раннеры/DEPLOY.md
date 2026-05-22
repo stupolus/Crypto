@@ -138,4 +138,67 @@ python -m scripts.daily_summary --journal трейдер/журнал/journal.sq
 `systemctl restart trader-demo`. Это всё ещё **VST (demo)**, не live.
 
 Live (реальные деньги) — отдельно, только после ≥4 недель demo +
-явного «да» (CLAUDE.md).
+явного «да» (CLAUDE.md). Критерии GO/NO-GO заморожены в
+`трейдер/DEMO_CRITERIA.md` — не двигать.
+
+## 9. Ежедневный отчёт в Telegram (systemd timer)
+
+Отчёт читает РЕАЛЬНЫЕ данные (journal.sqlite + equity/позиции BingX),
+шлёт в Telegram (если `TELEGRAM_*` заданы; иначе stdout).
+
+Проверить вручную:
+```bash
+cd ~/Crypto && . .venv/bin/activate
+python трейдер/раннеры/report.py --telegram
+```
+
+Демон + таймер (ежедневно 08:00 UTC):
+```bash
+cat > /etc/systemd/system/trader-report.service <<'UNIT'
+[Unit]
+Description=Trader demo daily report
+[Service]
+Type=oneshot
+WorkingDirectory=/root/Crypto
+ExecStart=/root/Crypto/.venv/bin/python трейдер/раннеры/report.py --telegram
+UNIT
+cat > /etc/systemd/system/trader-report.timer <<'UNIT'
+[Unit]
+Description=Daily trader report at 08:00 UTC
+[Timer]
+OnCalendar=*-*-* 08:00:00 UTC
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now trader-report.timer
+systemctl list-timers trader-report.timer
+```
+
+## 10. Проверка живости (liveness)
+
+```bash
+# heartbeat не старше ~1 бара (6h). Если старее — раннер завис/упал:
+stat -c '%y' ~/Crypto/трейдер/журнал/heartbeat
+# статус сервиса и последние логи:
+systemctl status trader-demo
+journalctl -u trader-demo -n 50 --no-pager
+```
+
+## 11. Типичные ошибки и решения
+
+- **`SSL: CERTIFICATE_VERIFY_FAILED ... not yet valid`** — системные часы
+  ушли. → `timedatectl set-ntp true` (см. §1a). Это частая причина
+  «не подключается к BingX/Coinglass».
+- **`Alerter: Stdout ... не заданы`** — нет `TELEGRAM_*` в `.env`. Это не
+  ошибка (фолбэк), но для алертов добавь токен+chat_id и перезапусти.
+- **`Refusing to run on live`** — `BINGX_ENV` ≠ `vst`. Должно быть `vst`.
+- **`symbol ... не маппится на Coinglass`** — символ вне `_SYMBOL_MAP`
+  (`parsers/coinglass/backfill.py`). Для BTC/ETH/SOL всё ок.
+- **`AuthError request_signed requires api_key`** — `.env` не подхватился
+  (запускай из `~/Crypto`, ключи без кавычек/пробелов).
+- **Coinglass `interval not available for your current API plan`** — не
+  трогай интервалы мельче 4h на HOBBYIST; 6h-конфиг трейдера ок.
+- **Нет сделок несколько дней** — норма для редкой разворотной стратегии
+  (см. DEMO_CRITERIA §1). Не «чинить» подгонкой.
