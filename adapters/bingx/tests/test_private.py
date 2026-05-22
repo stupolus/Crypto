@@ -493,7 +493,7 @@ def test_order_request_rejects_entry_without_stop_loss() -> None:
 
 
 def test_order_request_rejects_reduce_only_with_stop_loss() -> None:
-    with pytest.raises(ValueError, match="reduce_only"):
+    with pytest.raises(ValueError, match="close order must not carry"):
         OrderRequest(
             symbol="BTC-USDT",
             side="SELL",
@@ -502,6 +502,23 @@ def test_order_request_rejects_reduce_only_with_stop_loss() -> None:
             reduce_only=True,
             attached_stop_loss=Decimal("60000"),
         )
+
+
+def test_order_request_closes_position_skips_entry_stop_invariant() -> None:
+    """closes_position=True (hedge close) не требует attached_stop_loss и
+    не шлёт reduceOnly — валиден без стопа."""
+    req = OrderRequest(
+        symbol="NCSINASDAQ1002USD-USDT",
+        side="SELL",
+        position_side="LONG",
+        order_type="MARKET",
+        quantity=Decimal("0.09"),
+        reduce_only=False,
+        closes_position=True,
+    )
+    assert req.closes_position is True
+    assert req.reduce_only is False
+    assert req.attached_stop_loss is None
 
 
 def test_order_request_rejects_limit_without_price() -> None:
@@ -644,7 +661,7 @@ async def test_close_position_long_sends_sell_reduce_only_market(
     assert sent["side"] == "SELL"
     assert sent["type"] == "MARKET"
     assert sent["quantity"] == "0.005"
-    assert sent["reduceOnly"] == "true"
+    assert sent["reduceOnly"] == "true"  # one-way (BOTH): reduceOnly валиден
     # close-side не несёт attached SL/TP.
     assert "stopLoss" not in sent
     assert "takeProfit" not in sent
@@ -654,9 +671,11 @@ async def test_close_position_long_sends_sell_reduce_only_market(
 async def test_close_position_hedge_long_propagates_position_side(
     cfg: BingXConfig,
 ) -> None:
-    """В hedge mode close должен передать positionSide из самой позиции
-    (LONG/SHORT), иначе VST падает с code=109400 на TradFi-перпах
-    (NCSI*/NCCO*/NCFX*). Хардкод "BOTH" ломал ребалансировку Faber-VST."""
+    """В hedge mode close передаёт positionSide из позиции (LONG/SHORT) и
+    НЕ шлёт reduceOnly: BingX отвергает его с code=109400 «In the Hedge
+    mode, the 'ReduceOnly' field can not be filled» (найдено живым
+    прогоном GTAA-VST на NCSINASDAQ100). Хардкод reduceOnly=true ломал
+    close-leg ребаланса на TradFi-перпах (NCSI*/NCCO*/NCFX*)."""
     async with (
         BingXClient(cfg, api_key=_TEST_KEY, api_secret=_TEST_SECRET) as client,
         respx.mock(base_url=cfg.active_rest_base) as mock,
@@ -700,7 +719,6 @@ async def test_close_position_hedge_long_propagates_position_side(
                             "executedQty": "0.26",
                             "time": 1_700_000_000_000,
                             "updateTime": 1_700_000_000_500,
-                            "reduceOnly": True,
                         }
                     }
                 ),
@@ -713,7 +731,7 @@ async def test_close_position_hedge_long_propagates_position_side(
         f"hedge mode: должен передаваться positionSide из позиции, got {sent.get('positionSide')}"
     )
     assert sent["side"] == "SELL"
-    assert sent["reduceOnly"] == "true"
+    assert "reduceOnly" not in sent  # hedge mode: поле опущено (иначе 109400)
 
 
 # ─── 0.D part 2: listenKey CRUD, cancel_all_after, compensating-close ──────
