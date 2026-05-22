@@ -247,6 +247,64 @@ def commit_push(path: Path, n: int, title: str) -> bool:
     return False
 
 
+PROGRESS = WORK / "progress.json"
+RETRY = 3  # in-run attempts per video (backoff between)
+MAX_RUNS = 5  # runs after which a video is marked failed-permanently
+
+
+def load_progress() -> dict[str, dict[str, Any]]:
+    if PROGRESS.exists():
+        data: dict[str, dict[str, Any]] = json.loads(PROGRESS.read_text(encoding="utf-8"))
+        return data
+    return {}
+
+
+def save_progress(prog: dict[str, dict[str, Any]]) -> None:
+    PROGRESS.write_text(json.dumps(prog, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def now() -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def transcribe_one(x: dict[str, Any]) -> str:
+    """One video with in-run retries+backoff. Returns done/novideo;
+    raises on exhaustion."""
+    n, lid, title = x["n"], x["lid"], x["t"]
+    md = OUTDIR / f"{n:03d}-{lid}.md"
+    last = ""
+    for attempt in range(1, RETRY + 1):
+        try:
+            mp3 = fetch_audio(lid)
+            if mp3 == "NO_VIDEO":
+                md.write_text(
+                    f"# {title}\n\n**Урок:** {BASE}/teach/control/"
+                    f"lesson/view/id/{lid}\n**Статус:** без видео "
+                    f"(текстовый/тест) — расшифровка не требуется\n",
+                    encoding="utf-8",
+                )
+                return "novideo"
+            t1 = time.time()
+            raw = transcribe(lid, str(mp3))
+            header = (
+                f"# {title}\n\n"
+                f"**Урок:** {BASE}/teach/control/lesson/view/id/{lid}\n"
+                f"**№:** {n}\n"
+                f"**Статус:** сырой транскрипт (faster-whisper small, ru, "
+                f"без вычитки)\n\n---\n\n"
+            )
+            md.write_text(header + soft_wrap(raw) + "\n", encoding="utf-8")
+            (WORK / f"{lid}.mp3").unlink(missing_ok=True)
+            log(f"OK n={n} ({len(raw)} chars, {time.time() - t1:.0f}s)")
+            return "done"
+        except Exception as e:
+            last = f"{type(e).__name__}: {str(e)[:200]}"
+            log(f"retry {attempt}/{RETRY} n={n}: {last}")
+            (WORK / f"{lid}.txt.partial").unlink(missing_ok=True)
+            time.sleep(min(5 * 2**attempt, 120))
+    raise RuntimeError(last)
+
+
 def main() -> None:
     if not STATE.exists():
         log("FATAL: no gc_state.json (need re-login). STOPPING.")
@@ -259,6 +317,7 @@ def main() -> None:
     if only:
         keep = {int(v) for v in only.split(",")}
         vids = [x for x in vids if x["n"] in keep]
+    prog = load_progress()
     log(f"{len(vids)} video lessons to ensure")
     done = skipped = failed = 0
     for x in vids:
@@ -267,43 +326,48 @@ def main() -> None:
         if md.exists() and md.stat().st_size > 400:
             skipped += 1
             continue
+        rec = prog.get(lid, {"attempts": 0})
+        if rec.get("status") == "failed_permanent":
+            skipped += 1
+            continue
         log(f"=== n={n} lid={lid} {title[:50]}")
         try:
-            mp3 = fetch_audio(lid)
-            if mp3 == "NO_VIDEO":
+            status = transcribe_one(x)
+            prog[lid] = {"status": status, "n": n, "ts": now()}
+            commit_push(md, n, title)
+            done += 1
+        except Exception as e:  # all in-run retries exhausted this run
+            runs = int(rec.get("attempts", 0)) + 1
+            rec = {
+                "status": "failed",
+                "attempts": runs,
+                "error": f"{type(e).__name__}: {str(e)[:200]}",
+                "ts": now(),
+            }
+            failed += 1
+            log(f"FAIL n={n} (run {runs}/{MAX_RUNS}): {rec['error']}")
+            with (WORK / "batch_failures.log").open("a") as fh:
+                fh.write(f"{now()} {n} {lid} run{runs} {rec['error']}\n")
+            if runs >= MAX_RUNS:
+                rec["status"] = "failed_permanent"
                 md.write_text(
                     f"# {title}\n\n**Урок:** {BASE}/teach/control/"
-                    f"lesson/view/id/{lid}\n**Статус:** без видео "
-                    f"(текстовый/тест) — расшифровка не требуется\n",
+                    f"lesson/view/id/{lid}\n**№:** {n}\n**Статус:** "
+                    f"НЕ УДАЛОСЬ расшифровать после {runs} прогонов "
+                    f"(причина: {rec['error']}). Перепроверить вручную.\n",
                     encoding="utf-8",
                 )
                 commit_push(md, n, title)
-                skipped += 1
-                continue
-            t1 = time.time()
-            raw = transcribe(lid, str(mp3))
-            body = soft_wrap(raw)
-            header = (
-                f"# {title}\n\n"
-                f"**Курс:** Криптограмотность (модуль {x.get('module', '?')})\n"
-                f"**Урок:** {BASE}/teach/control/lesson/view/id/{lid}\n"
-                f"**№ в курсе:** {n}\n"
-                f"**Статус:** сырой транскрипт (faster-whisper small, ru, "
-                f"без вычитки)\n\n---\n\n"
-            )
-            md.write_text(header + body + "\n", encoding="utf-8")
-            (WORK / f"{lid}.mp3").unlink(missing_ok=True)
-            commit_push(md, n, title)
-            done += 1
-            log(f"OK n={n} ({len(raw)} chars, {time.time() - t1:.0f}s)")
-        except Exception as e:
-            failed += 1
-            log(f"FAIL n={n}: {type(e).__name__}: {str(e)[:200]}")
-            with (WORK / "batch_failures.log").open("a") as fh:
-                fh.write(f"{n} {lid} {e}\n")
-            continue
-    log(f"BATCH DONE done={done} skipped={skipped} failed={failed}")
-    (WORK / "BATCH_COMPLETE").write_text(f"done={done} skipped={skipped} failed={failed}\n")
+            prog[lid] = rec
+        save_progress(prog)
+    remaining = [x for x in vids if not (OUTDIR / f"{x['n']:03d}-{x['lid']}.md").exists()]
+    log(f"BATCH PASS done={done} skipped={skipped} failed={failed} remaining={len(remaining)}")
+    if not remaining:
+        (WORK / "BATCH_COMPLETE").write_text(
+            f"all {len(vids)} resolved; "
+            f"failed_permanent="
+            f"{sum(1 for v in prog.values() if v.get('status') == 'failed_permanent')}\n"
+        )
 
 
 if __name__ == "__main__":
