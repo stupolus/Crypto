@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -346,3 +347,102 @@ def test_verdict_no_data() -> None:
     txt = build_verdict(datetime(2026, 5, 29, tzinfo=UTC), [], {})
     assert "нет данных" in txt
     assert "НЕ ПОДТВЕРЖДЕНО" in txt
+
+
+# --- _rebalance: оффлайн интеграция с фейковым BingX API ---
+
+
+class _FakeBalance:
+    def __init__(self, asset: str, equity: str) -> None:
+        self.asset = asset
+        self.equity = equity
+
+
+class _FakePos:
+    def __init__(self, amt: str) -> None:
+        self.position_amount = amt
+
+
+class _FakeAck:
+    order_id = "FAKE-1"
+
+
+class _FakeAPI:
+    def __init__(self, *, fail_positions: bool = False) -> None:
+        self._fail = fail_positions
+        self.orders: list[object] = []
+        self.closed: list[str] = []
+
+    async def get_balance(self) -> list[_FakeBalance]:
+        return [_FakeBalance("VST", "100000")]
+
+    async def get_positions(self, symbol: str) -> list[_FakePos]:
+        if self._fail:
+            raise RuntimeError("BingX API error 100410: rate limit disabled period")
+        return []  # нет открытых позиций
+
+    async def close_position(self, symbol: str) -> None:
+        self.closed.append(symbol)
+
+    async def place_order(self, req: object) -> _FakeAck:
+        self.orders.append(req)
+        return _FakeAck()
+
+
+class _FakeClient:
+    async def __aenter__(self) -> _FakeClient:
+        return self
+
+    async def __aexit__(self, *a: object) -> None:
+        return None
+
+
+def _all_long_eoms() -> dict[str, tuple[date, float, float]]:
+    return {a.label: (date(2026, 4, 30), 110.0, 100.0) for a in _ASSETS}
+
+
+def _perp_pxs() -> dict[str, float]:
+    return {a.label: 100.0 for a in _ASSETS}
+
+
+def _patch_bingx(monkeypatch, api: _FakeAPI, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(gtaa_vst_executor, "BingXClient", lambda settings: _FakeClient())
+    monkeypatch.setattr(gtaa_vst_executor, "PrivateAPI", lambda c: api)
+    monkeypatch.setattr(gtaa_vst_executor, "_STATE", tmp_path / "state.json")
+    monkeypatch.setattr(gtaa_vst_executor, "_LOG", tmp_path / "log.jsonl")
+
+
+def _run_rebalance(api: _FakeAPI, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import asyncio
+    from types import SimpleNamespace
+    from typing import cast
+
+    from adapters.bingx.settings import BingXSettings
+    from core.alerts import NoopAlerter
+
+    _patch_bingx(monkeypatch, api, tmp_path)
+    s = cast(BingXSettings, SimpleNamespace(env="vst"))
+    asyncio.run(
+        gtaa_vst_executor._rebalance(
+            s, False, _all_long_eoms(), _perp_pxs(), {}, date(2026, 4, 30), NoopAlerter()
+        )
+    )
+
+
+def test_rebalance_happy_path_opens_four_and_writes_state(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Все 4 ON, нет позиций → 4 ордера + state.last_rebalance_eom записан."""
+    api = _FakeAPI()
+    _run_rebalance(api, tmp_path, monkeypatch)
+    assert len(api.orders) == len(_ASSETS)  # 4 open_long
+    state = json.loads((tmp_path / "state.json").read_text())
+    assert state["last_rebalance_eom"] == "2026-04-30"
+
+
+def test_rebalance_read_error_aborts_without_state(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """get_positions падает → НЕ крашится, ордеров нет, state не записан."""
+    api = _FakeAPI(fail_positions=True)
+    _run_rebalance(api, tmp_path, monkeypatch)
+    assert api.orders == []  # ни одного ордера
+    assert not (tmp_path / "state.json").exists()  # state не тронут → ретрай
+    log = (tmp_path / "log.jsonl").read_text()
+    assert "read_error" in log

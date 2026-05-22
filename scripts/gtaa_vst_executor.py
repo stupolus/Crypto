@@ -353,7 +353,19 @@ async def _rebalance(
     # 4. BingX session, эквити, period-state
     async with BingXClient(settings=s) as c:
         api = PrivateAPI(c)
-        bal = await api.get_balance()
+        try:
+            bal = await api.get_balance()
+        except Exception as e:
+            _log({"ts": int(time.time()), "env": s.env,
+                  "target_eom": target_eom.isoformat(), "action": "read_error",
+                  "status": "error",
+                  "err": f"get_balance: {type(e).__name__}: {str(e)[:160]}"})  # fmt: skip
+            await alerter.send_critical(
+                f"GTAA-VST: чтение баланса не удалось ({type(e).__name__}), ребаланс "
+                "отменён. State не тронут — ретрай на след. триггере."
+            )
+            print(f"ABORT: get_balance {type(e).__name__}: {str(e)[:160]}")
+            return
         equity = next(
             (Decimal(str(b.equity)) for b in bal if b.asset in ("USDT", "VST")),
             Decimal(str(bal[0].equity)) if bal else Decimal("0"),
@@ -372,9 +384,20 @@ async def _rebalance(
             "equity": str(equity), "equity_share": str(equity_share),
         }  # fmt: skip
         rows_done: list[dict[str, object]] = []
+        read_error: str | None = None
         for a in _ASSETS:
             _idx_date, idx_close, sma200 = eoms[a.label]
-            poss = await api.get_positions(a.perp)
+            try:
+                poss = await api.get_positions(a.perp)
+            except Exception as e:
+                # Чтение позиции упало (напр. BingX 100410 rate-limit). НЕ гадаем
+                # текущую позицию (риск дублей) — прерываем ребаланс, не трогаем
+                # state. Уже исполненные активы идемпотентны на след. триггере.
+                read_error = f"{a.label} get_positions: {type(e).__name__}: {str(e)[:140]}"
+                rows_done.append({"label": a.label, "perp": a.perp,
+                                  "action": "read_error", "status": "error",
+                                  "err": read_error})  # fmt: skip
+                break
             cur_qty = sum((Decimal(str(p.position_amount)) for p in poss), Decimal("0"))
             plan = plan_asset_action(
                 a, idx_close, sma200, Decimal(str(perp_pxs[a.label])), cur_qty,
@@ -406,14 +429,20 @@ async def _rebalance(
                            "err": f"{type(e).__name__}: {str(e)[:200]}"}
                 )  # fmt: skip
 
-        # 6. Persist state + log all rows
-        # В DRY не двигаем last_rebalance_eom (иначе реальный прогон в этом
-        # месяце посчитает себя noop). State пишем только при боевом ребалансе.
+        # 6. Лог + persist. Фатальная ошибка чтения → НЕ двигаем
+        # last_rebalance_eom (идемпотентный ретрай на след. триггере).
+        for r in rows_done:
+            _log({**base_log, **r})
+        if read_error is not None:
+            await alerter.send_critical(
+                f"GTAA-VST ребаланс прерван ({read_error}). State не тронут — "
+                "ретрай на след. триггере."
+            )
+            print(f"ABORT: {read_error}")
+            return
         if not dry:
             st["last_rebalance_eom"] = target_eom.isoformat()
             _STATE.write_text(json.dumps(st))
-        for r in rows_done:
-            _log({**base_log, **r})
         ok_count = sum(1 for r in rows_done if r.get("status") == "ok")
         errors = [r for r in rows_done if r.get("status") == "error"]
         summary = format_rebalance_summary(target_eom, rows_done)
