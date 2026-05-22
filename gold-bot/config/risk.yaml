@@ -1,0 +1,34 @@
+# Зеркало числовых параметров risk-profile.md. Источник истины — risk-profile.md.
+# Менять: сначала risk-profile.md (с обоснованием), потом здесь, потом код.
+
+# Риск на сделку (доля активного банка)
+risk_pct_base: 0.005
+risk_pct_max: 0.010
+risk_pct_min: 0.002
+
+# Плечо и стоп
+max_effective_leverage: 5
+min_stop_distance_pct: 0.002      # 0.2%
+maintenance_margin_rate: 0.01     # для оценки цены ликвидации
+liq_buffer_min_frac: 0.30         # стоп→ликвидация ≥ 30% от вход→стоп
+
+# Circuit breakers (доли активного банка; отрицательные = убыток)
+daily_stop_pct: -0.02
+weekly_stop_pct: -0.05
+monthly_stop_pct: -0.10
+global_killswitch_dd_pct: -0.15   # от пика эквити
+max_consecutive_losses: 4
+
+# Лимиты позиций
+max_positions_total: 3
+max_positions_per_class: 2
+max_positions_per_symbol: 1
+
+# Частота сделок
+max_trades_per_day: 15
+max_trades_per_symbol_per_day: 5
+min_seconds_between_trades_same_symbol: 300
+
+# Гейты входа
+cost_edge_min_ratio: 2.0          # ожидаемый TP ≥ 2× суммарной стоимости сделки
+spread_max_mult: 3.0              # spread > 3× медианы → не входим
