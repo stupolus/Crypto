@@ -20,6 +20,7 @@ from scripts.gtaa_vst_executor import (
     should_rebalance,
 )
 from scripts.gtaa_vst_report import build_report
+from scripts.gtaa_vst_verdict import build_verdict
 
 _ENGINE = RiskEngine()
 _MMR = Decimal(str(_ENGINE.config.limits.maintenance_margin_rate))
@@ -290,3 +291,58 @@ def test_format_preflight_incomplete_not_ready() -> None:
     rows = [("GSPC", "2026-04-30", 110.0, 100.0, "LONG")]
     txt = format_preflight("vst", rows, True, Decimal("100000"), [])
     assert "ЕСТЬ ПРОБЛЕМЫ" in txt
+
+
+# --- build_verdict (ШАГ 4: факты из логов, не PnL) ---
+
+
+def _ts(day: int) -> int:
+    """ts для дня 2026-05-<day> 21:30 UTC."""
+    return int(datetime(2026, 5, day, 21, 30, tzinfo=UTC).timestamp())
+
+
+def test_verdict_reliable_when_all_days_fired_and_rebalance_caught() -> None:
+    rows: list[dict[str, object]] = []
+    for d in range(1, 29):  # 28 дней подряд — heartbeat каждый день
+        rows.append({"ts": _ts(d), "action": "fired"})
+    # один день — реальный ребаланс (open_long ok)
+    rows.append({"ts": _ts(28), "action": "open_long", "status": "ok", "label": "GSPC"})
+    txt = build_verdict(
+        datetime(2026, 5, 29, tzinfo=UTC), rows, {"last_rebalance_eom": "2026-04-30"}
+    )
+    assert "ИСПОЛНЕНИЕ: НАДЁЖНО" in txt
+    assert "28/28" in txt
+    assert "Ребалансов исполнено (ok): 1" in txt
+    assert "PnL: НЕ оценивается" in txt
+
+
+def test_verdict_flags_gaps_and_errors() -> None:
+    rows: list[dict[str, object]] = [
+        {"ts": _ts(1), "action": "fired"},
+        {"ts": _ts(5), "action": "fired"},  # пропуск дней 2-4
+        {
+            "ts": _ts(5),
+            "action": "rebalance",
+            "status": "error",
+            "label": "CL",
+            "err": "BingXError: position side",
+        },
+    ]
+    txt = build_verdict(datetime(2026, 5, 6, tzinfo=UTC), rows, {})
+    assert "НЕ ПОДТВЕРЖДЕНО" in txt
+    assert "ПРОПУСКИ" in txt
+    assert "Ошибок исполнения: 1" in txt
+    assert "CL: BingXError: position side" in txt
+
+
+def test_verdict_incomplete_when_no_rebalance() -> None:
+    rows: list[dict[str, object]] = [{"ts": _ts(d), "action": "fired"} for d in range(1, 29)]
+    txt = build_verdict(datetime(2026, 5, 29, tzinfo=UTC), rows, {})
+    assert "НЕ ПОДТВЕРЖДЕНО" in txt
+    assert "ни одного ребаланса" in txt
+
+
+def test_verdict_no_data() -> None:
+    txt = build_verdict(datetime(2026, 5, 29, tzinfo=UTC), [], {})
+    assert "нет данных" in txt
+    assert "НЕ ПОДТВЕРЖДЕНО" in txt
