@@ -1,0 +1,11 @@
+[Unit]
+Description=Crypto bot — GTAA-4 VST отчёт (daily 21:45 UTC, после исполнителя)
+Requires=gtaa-vst-report.service
+
+[Timer]
+OnCalendar=*-*-* 21:45:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

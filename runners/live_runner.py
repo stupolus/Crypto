@@ -52,7 +52,7 @@ from adapters.bingx.public import PublicAPI
 from adapters.bingx.settings import BingXSettings
 from adapters.bingx.user_stream import BingXUserDataStream
 from adapters.bingx.websocket import BingXMarketWebSocket
-from core.alerts import Alerter, StdoutAlerter, TelegramAlerter
+from core.alerts import Alerter
 from core.backtest.models import OpenPosition, StrategyContext
 from core.risk import RiskEngine
 from strategies.btc_breakout import BtcBreakoutStrategy, get_default_config
@@ -257,32 +257,13 @@ class _KlineCloseDetector:
 
 
 def _build_alerter(prefix: str = "") -> Alerter:
-    """Выбрать alerter: Telegram (если в .env есть оба ключа) или Stdout.
+    """Делегирует в ``core.alerts.factory.build_alerter`` (общая фабрика).
 
-    Источник: ``core.alerts.settings.TelegramSettings`` — pydantic-settings
-    автоматически читает .env (os.getenv этого НЕ делает, баг до 2026-05-12).
+    Имя сохранено для обратной совместимости (импортируется в
+    ``runners/llm_runner.py``)."""
+    from core.alerts.factory import build_alerter
 
-    Если оба заданы — TelegramAlerter, иначе StdoutAlerter.
-    Stdout всегда работает (логи + journald на VPS).
-
-    ``prefix`` — instance-tag для multi-runner setup (например,
-    ``"[gold_safety_haven@XAU-USDT]"``). Полезно когда несколько runner'ов
-    шлют в один Telegram chat — без тега не понятно «откуда» алерт.
-    """
-    from core.alerts.settings import TelegramSettings
-
-    settings = TelegramSettings()
-    if settings.configured:
-        # Тип-нарратор для mypy: configured=True означает оба не None.
-        assert settings.chat_id is not None
-        logger.info("Alerter: Telegram (chat=%s)", settings.chat_id[:4] + "...")
-        return TelegramAlerter(
-            bot_token=settings.bot_token,
-            chat_id=settings.chat_id,
-            prefix=prefix,
-        )
-    logger.info("Alerter: Stdout (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы в .env)")
-    return StdoutAlerter(prefix=prefix)
+    return build_alerter(prefix)
 
 
 async def _warm_history(

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from adapters.bingx.client import BingXClient
 from adapters.bingx.private import PrivateAPI
@@ -66,15 +67,33 @@ def is_halted() -> bool:
     return _HALT.exists()
 
 
+def _http_get_json(url: str, timeout: float = 30.0, retries: int = 3) -> Any:
+    """GET с ретраями и экспоненциальным бэкоффом (2/4/8s). Browser UA.
+
+    Сетевые обрывы на VPS — норма; ретрай делает прогон устойчивым.
+    После исчерпания попыток пробрасывает последнее исключение
+    (вызывающий решает: skip-прогон vs None)."""
+    last: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as fh:
+                return json.load(fh)
+        except Exception as e:  # любой сбой сети ретраим
+            last = e
+            if attempt < retries - 1:
+                time.sleep(2 ** (attempt + 1))
+    assert last is not None
+    raise last
+
+
 def _fetch_yahoo_daily(yahoo_sym: str) -> list[tuple[date, float]]:
-    """Daily adjclose Yahoo. Browser UA. Сорт по дате."""
+    """Daily adjclose Yahoo (с ретраями). Сорт по дате."""
     u = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
         f"?period1=0&period2={int(time.time())}&interval=1d"
     )
-    req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as fh:
-        d = json.load(fh)
+    d = _http_get_json(u)
     res = d["chart"]["result"][0]
     ts = res["timestamp"]
     adj = res["indicators"].get("adjclose") or [{}]
@@ -116,15 +135,13 @@ def latest_eom_with_sma(
 
 
 def _perp_price(perp_symbol: str) -> float | None:
-    """Текущая цена перпа через swap v3 klines (last close)."""
+    """Текущая цена перпа через swap v3 klines (last close, с ретраями)."""
     u = (
         "https://open-api.bingx.com/openApi/swap/v3/quote/klines"
         f"?symbol={perp_symbol}&interval=1d&limit=1"
     )
     try:
-        req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=30) as fh:
-            rows = json.load(fh).get("data") or []
+        rows = _http_get_json(u).get("data") or []
         if not rows:
             return None
         last = rows[-1]
@@ -149,58 +166,104 @@ def _log(row: dict[str, object]) -> None:
         fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
 
 
+def format_rebalance_summary(target_eom: date, rows: list[dict[str, object]]) -> str:
+    """Чистая. Человекочитаемая сводка ребаланса для Telegram/лога."""
+    ok = sum(1 for r in rows if r.get("status") == "ok")
+    parts = [
+        f"{r.get('label')}:{r.get('signal')}→{r.get('action')}[{r.get('status')}]" for r in rows
+    ]
+    return f"GTAA-VST EOM={target_eom}: {ok}/{len(rows)} ok | " + ", ".join(parts)
+
+
+async def _aclose(alerter: object) -> None:
+    """Best-effort закрытие httpx-клиента TelegramAlerter (Stdout — no-op)."""
+    fn = getattr(alerter, "aclose", None)
+    if fn is not None:
+        await fn()
+
+
 async def _run(dry: bool) -> None:
+    from core.alerts.factory import build_alerter
+
     s = BingXSettings()
     if s.env != "vst":
+        # Heartbeat даже при stop — прогон зафиксирован для аудита.
+        _log({"ts": int(time.time()), "action": "fired", "outcome": "env_stop",
+              "env": s.env, "dry": dry})  # fmt: skip
         print(f"STOP: BINGX_ENV={s.env!r} != 'vst'. Только demo. Не live.")
         return
-    if is_halted():
-        _log({
-            "ts": int(time.time()), "action": "HALTED",
-            "reason": f"{_HALT} существует — kill-switch",
-        })  # fmt: skip
-        print(f"HALTED: {_HALT} существует.")
-        return
 
-    # 1. Yahoo сигналы для 4 индексов
-    eoms: dict[str, tuple[date, float, float]] = {}
-    for a in _ASSETS:
-        try:
-            rows = _fetch_yahoo_daily(a.yahoo)
-        except Exception as e:
-            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
-                  "reason": f"yahoo error: {type(e).__name__}"})  # fmt: skip
-            print(f"skip: yahoo {a.label} {type(e).__name__}")
+    alerter = build_alerter(prefix="[gtaa-vst]")
+    # Heartbeat: каждый прогон таймера оставляет след (даже noop/halt) —
+    # daily-report считает «fired» за 24ч, подтверждая что таймер живой.
+    _log({"ts": int(time.time()), "action": "fired", "dry": dry})
+    try:
+        if is_halted():
+            _log({
+                "ts": int(time.time()), "action": "HALTED",
+                "reason": f"{_HALT} существует — kill-switch",
+            })  # fmt: skip
+            await alerter.send_warning(f"HALTED: {_HALT} существует, ордеров нет")
+            print(f"HALTED: {_HALT} существует.")
             return
-        e_eom = latest_eom_with_sma(rows)
-        if e_eom is None:
-            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
-                  "reason": "не хватает истории для SMA200"})  # fmt: skip
-            print(f"skip: {a.label} no sma200 data")
+
+        # 1. Yahoo сигналы для 4 индексов
+        eoms: dict[str, tuple[date, float, float]] = {}
+        for a in _ASSETS:
+            try:
+                rows = _fetch_yahoo_daily(a.yahoo)
+            except Exception as e:
+                _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                      "reason": f"yahoo error: {type(e).__name__}"})  # fmt: skip
+                await alerter.send_warning(
+                    f"skip: Yahoo {a.label} недоступен после ретраев ({type(e).__name__})"
+                )
+                print(f"skip: yahoo {a.label} {type(e).__name__}")
+                return
+            e_eom = latest_eom_with_sma(rows)
+            if e_eom is None:
+                _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                      "reason": "не хватает истории для SMA200"})  # fmt: skip
+                print(f"skip: {a.label} no sma200 data")
+                return
+            eoms[a.label] = e_eom
+
+        # 2. Триггер ребаланса: max EOM по 4 индексам vs state
+        target_eom = max(d for (d, _c, _s) in eoms.values())
+        prev = json.loads(_STATE.read_text()) if _STATE.exists() else {}
+        if not should_rebalance(target_eom, prev.get("last_rebalance_eom")):
+            _log({"ts": int(time.time()), "action": "noop",
+                  "reason": "уже ребалансированы на этот EOM",
+                  "target_eom": target_eom.isoformat()})  # fmt: skip
+            print(f"noop: уже ребалансированы на {target_eom}")
             return
-        eoms[a.label] = e_eom
 
-    # 2. Триггер ребаланса: max EOM по 4 индексам vs state
-    target_eom = max(d for (d, _c, _s) in eoms.values())
-    prev = json.loads(_STATE.read_text()) if _STATE.exists() else {}
-    if not should_rebalance(target_eom, prev.get("last_rebalance_eom")):
-        _log({"ts": int(time.time()), "action": "noop",
-              "reason": "уже ребалансированы на этот EOM",
-              "target_eom": target_eom.isoformat()})  # fmt: skip
-        print(f"noop: уже ребалансированы на {target_eom}")
-        return
+        # 3. Цены перпов
+        perp_pxs: dict[str, float] = {}
+        for a in _ASSETS:
+            pp = _perp_price(a.perp)
+            if pp is None or pp <= 0:
+                _log({"ts": int(time.time()), "label": a.label, "action": "skip",
+                      "reason": "нет цены перпа"})  # fmt: skip
+                await alerter.send_warning(f"skip: нет цены перпа {a.perp}")
+                print(f"skip: нет цены {a.perp}")
+                return
+            perp_pxs[a.label] = pp
 
-    # 3. Цены перпов
-    perp_pxs: dict[str, float] = {}
-    for a in _ASSETS:
-        pp = _perp_price(a.perp)
-        if pp is None or pp <= 0:
-            _log({"ts": int(time.time()), "label": a.label, "action": "skip",
-                  "reason": "нет цены перпа"})  # fmt: skip
-            print(f"skip: нет цены {a.perp}")
-            return
-        perp_pxs[a.label] = pp
+        await _rebalance(s, dry, eoms, perp_pxs, prev, target_eom, alerter)
+    finally:
+        await _aclose(alerter)
 
+
+async def _rebalance(
+    s: BingXSettings,
+    dry: bool,
+    eoms: dict[str, tuple[date, float, float]],
+    perp_pxs: dict[str, float],
+    prev: dict[str, str],
+    target_eom: date,
+    alerter: Any,
+) -> None:
     # 4. BingX session, эквити, period-state
     async with BingXClient(settings=s) as c:
         api = PrivateAPI(c)
@@ -288,11 +351,24 @@ async def _run(dry: bool) -> None:
                 )  # fmt: skip
 
         # 6. Persist state + log all rows
-        st["last_rebalance_eom"] = target_eom.isoformat()
-        _STATE.write_text(json.dumps(st))
+        # В DRY не двигаем last_rebalance_eom (иначе реальный прогон в этом
+        # месяце посчитает себя noop). State пишем только при боевом ребалансе.
+        if not dry:
+            st["last_rebalance_eom"] = target_eom.isoformat()
+            _STATE.write_text(json.dumps(st))
         for r in rows_done:
             _log({**base_log, **r})
         ok_count = sum(1 for r in rows_done if r.get("status") == "ok")
+        errors = [r for r in rows_done if r.get("status") == "error"]
+        summary = format_rebalance_summary(target_eom, rows_done)
+        if errors:
+            await alerter.send_critical(
+                summary
+                + " | ОШИБКИ: "
+                + "; ".join(f"{r.get('label')}={r.get('err')}" for r in errors)
+            )
+        elif not dry:
+            await alerter.send_info(summary)
         print(
             f"{datetime.now(tz=UTC).strftime('%Y-%m-%d')} GTAA-VST rebalance "
             f"EOM={target_eom}: {ok_count}/{len(rows_done)} OK"

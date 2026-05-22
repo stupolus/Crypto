@@ -130,6 +130,11 @@ install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst.service" \
   /etc/systemd/system/gtaa-vst.service
 install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst.timer" \
   /etc/systemd/system/gtaa-vst.timer
+# GTAA-4 ежедневный отчёт (план 47.3, наблюдение в Telegram)
+install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst-report.service" \
+  /etc/systemd/system/gtaa-vst-report.service
+install -m 644 "${INSTALL_DIR}/scripts/deploy/gtaa-vst-report.timer" \
+  /etc/systemd/system/gtaa-vst-report.timer
 install -m 644 "${INSTALL_DIR}/scripts/deploy/logrotate.conf" \
   /etc/logrotate.d/crypto
 systemctl daemon-reload
