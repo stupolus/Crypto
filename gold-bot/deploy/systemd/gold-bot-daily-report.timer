@@ -1,0 +1,16 @@
+# Таймер для gold-bot-daily-report.service: 00:05 UTC ежедневно.
+# Установка:
+#   cp gold-bot-daily-report.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now gold-bot-daily-report.timer
+
+[Unit]
+Description=gold-bot paper daily report @ 00:05 UTC
+
+[Timer]
+OnCalendar=*-*-* 00:05:00 UTC
+Persistent=true
+Unit=gold-bot-daily-report.service
+
+[Install]
+WantedBy=timers.target
