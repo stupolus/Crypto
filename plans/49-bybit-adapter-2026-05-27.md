@@ -110,6 +110,11 @@ exchange-agnostic (`Strategy` protocol + `OrderRequest`). Цена
 2. **`positionIdx`.** В hedge-режиме каждый ордер должен явно указывать `positionIdx` (1 или 2). Mirror фикса #164 #177 — но на уровне Bybit-адаптера. position_side из OrderRequest → positionIdx.
 3. **`category`.** Каждый эндпоинт требует `category=linear` для USDT-перпов. Один параметр везде.
 4. **Time-sync.** Bybit жёстко ругается на расхождение timestamp > recv_window. Аналог `time-sync` есть, надо повторить.
+5. **Geoblock CloudFront.** Bybit (`api.bybit.com` и `api-testnet.bybit.com`)
+   возвращает HTTP 403 с CloudFront-страницы из dev-окружения
+   (проверено 2026-05-27). Это значит: **integration/smoke-тесты
+   запускаются только на VPS** (Hostinger Asia) через Мануса, по
+   образцу GTAA-smoke. Unit-тесты с `respx`-моками работают везде.
 
 ## 10 априорных причин провала
 
