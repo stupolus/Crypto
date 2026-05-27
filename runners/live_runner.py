@@ -612,7 +612,9 @@ def main() -> None:
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
-            "liquidation_reversal",
+            # liquidation_reversal — AUDIT-DEPRECATED 2026-05-27, см.
+            # retro/2026-05-27-аудит-щукина.md. Код _build_strategy
+            # сохранён, но из CLI choices убран.
             "composite_signal",
         ],
         required=True,

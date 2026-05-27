@@ -157,7 +157,9 @@ def main() -> None:
             "gold_safety_haven",
             "oil_eia_avoid",
             "stock_earnings_avoid",
-            "liquidation_reversal",
+            # liquidation_reversal — AUDIT-DEPRECATED 2026-05-27, см.
+            # retro/2026-05-27-аудит-щукина.md. Factory-ветка ниже
+            # сохранена, но из CLI choices убрано.
             "composite_signal",
         ],
         default="btc_breakout",
