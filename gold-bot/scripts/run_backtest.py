@@ -1,7 +1,10 @@
-"""Walk-forward бэктест стратегии mean_reversion_vwap по историческим свечам.
+"""Walk-forward бэктест выбранной стратегии по историческим свечам.
 
 Запуск из каталога gold-bot (после download_klines; данные в gold-bot/data/):
-    python -m scripts.run_backtest --exchange bingx --symbol BTC/USDT:USDT --timeframe 15m
+    python -m scripts.run_backtest --exchange bingx --symbol BTC/USDT:USDT \\
+        --timeframe 15m --strategy mean_reversion_vwap
+    python -m scripts.run_backtest --exchange bingx --symbol PAXG/USDT:USDT \\
+        --timeframe 15m --strategy donchian_breakout
 
 Печатает метрики по каждому OOS-окну, агрегат OOS и вердикт против порогов
 master-плана (PF≥1.3, expectancy>2×cost, max DD≤8%, ≥30 сделок/окно).
@@ -11,19 +14,30 @@ master-плана (PF≥1.3, expectancy>2×cost, max DD≤8%, ≥30 сделок
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 
 from backtest.costs import CostModel
 from backtest.engine import BacktestEngine
 from backtest.metrics import Metrics
+from backtest.strategy import Strategy
 from backtest.walkforward import run_walk_forward
 from marketdata.candles import candles_path, load_parquet
 from risk.config import load_risk_config
-from strategies.mean_reversion_vwap.config import load_params
+from strategies.donchian_breakout.config import load_params as load_donchian_params
+from strategies.donchian_breakout.strategy import DonchianBreakout
+from strategies.mean_reversion_vwap.config import load_params as load_mrv_params
 from strategies.mean_reversion_vwap.strategy import MeanReversionVWAP
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+# Реестр стратегий: имя → фабрика, принимающая risk_pct, возвращающая Strategy.
+# Добавление новой стратегии = одна строка здесь.
+_STRATEGIES: dict[str, Callable[[Decimal], Strategy]] = {
+    "mean_reversion_vwap": lambda risk: MeanReversionVWAP(load_mrv_params(), risk),
+    "donchian_breakout": lambda risk: DonchianBreakout(load_donchian_params(), risk),
+}
 
 
 def _fmt(m: Metrics) -> str:
@@ -46,10 +60,16 @@ def _verdict(m: Metrics) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Walk-forward бэктест mean_reversion_vwap")
+    parser = argparse.ArgumentParser(description="Walk-forward бэктест стратегии")
     parser.add_argument("--exchange", choices=["bingx", "bybit"], required=True)
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--timeframe", default="15m")
+    parser.add_argument(
+        "--strategy",
+        choices=sorted(_STRATEGIES.keys()),
+        default="mean_reversion_vwap",
+        help="Какую стратегию прогонять (см. _STRATEGIES)",
+    )
     parser.add_argument("--equity", type=str, default="10000")
     parser.add_argument("--train", type=int, default=2000, help="свечей в IS-окне")
     parser.add_argument("--test", type=int, default=1000, help="свечей в OOS-окне")
@@ -58,18 +78,20 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_risk_config()
-    params = load_params()
     risk_pct = cfg.risk_pct_base
     equity0 = Decimal(args.equity)
     costs = CostModel(taker_fee=Decimal(args.taker), slippage_pct=Decimal(args.slippage))
 
+    strategy_factory = _STRATEGIES[args.strategy]
+
     path = candles_path(_DATA_DIR, args.exchange, args.symbol, args.timeframe)
     candles = load_parquet(path)
+    print(f"Стратегия: {args.strategy}")
     print(f"Загружено свечей: {len(candles)} из {path}")
 
     report = run_walk_forward(
         candles,
-        lambda _is: BacktestEngine(MeanReversionVWAP(params, risk_pct), costs, cfg, equity0),
+        lambda _is: BacktestEngine(strategy_factory(risk_pct), costs, cfg, equity0),
         train_size=args.train,
         test_size=args.test,
         equity0=equity0,
