@@ -15,6 +15,7 @@ def _make_req() -> OrderRequest:
     return OrderRequest(
         symbol="BTC-USDT",
         side="BUY",
+        position_side="LONG",
         order_type="MARKET",
         quantity=Decimal("0.001"),
         attached_stop_loss=Decimal("60000"),
@@ -122,6 +123,7 @@ async def test_journal_list_pending_filters_by_status_and_symbol(
     req_eth = OrderRequest(
         symbol="ETH-USDT",
         side="BUY",
+        position_side="LONG",
         order_type="MARKET",
         quantity=Decimal("0.01"),
         attached_stop_loss=Decimal("3000"),

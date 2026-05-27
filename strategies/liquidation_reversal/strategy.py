@@ -239,6 +239,7 @@ class LiquidationReversalStrategy:
         return OrderRequest(
             symbol=self._cfg.symbol,
             side=setup.side,
+            position_side="LONG" if setup.side == "BUY" else "SHORT",
             order_type="MARKET",
             quantity=decision.quantity,
             attached_stop_loss=stop,

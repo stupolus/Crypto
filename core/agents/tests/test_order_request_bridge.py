@@ -18,6 +18,7 @@ def _make_order_request(
     return OrderRequest(
         symbol="BTC-USDT",
         side=side,
+        position_side="LONG" if side == "BUY" else "SHORT",
         order_type="LIMIT",
         quantity=quantity,
         price=price,
@@ -103,6 +104,7 @@ def test_build_signal_candidate_market_order_no_entry_price() -> None:
     req = OrderRequest(
         symbol="BTC-USDT",
         side="BUY",
+        position_side="LONG",
         order_type="MARKET",
         quantity=Decimal("0.001"),
         attached_stop_loss=Decimal("79800"),

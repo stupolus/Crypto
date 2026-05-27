@@ -419,7 +419,7 @@ class OrderRequest(_StrictModel):
 
     symbol: str
     side: OrderSide
-    position_side: PositionSide = "BOTH"
+    position_side: PositionSide  # required: hedge-mode → LONG/SHORT; one-way → BOTH
     order_type: EntryOrderType
     quantity: Decimal
     price: Decimal | None = None

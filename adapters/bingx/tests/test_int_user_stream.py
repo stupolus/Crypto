@@ -106,6 +106,7 @@ async def test_int_user_stream_receives_order_trade_update_on_close(
                 OrderRequest(
                     symbol=symbol,
                     side="BUY",
+                    position_side="LONG",
                     order_type="MARKET",
                     quantity=Decimal("0.0001"),
                     attached_stop_loss=sl_price,

@@ -72,6 +72,7 @@ async def test_int_open_market_with_sl_then_close_btc_usdt(
     req = OrderRequest(
         symbol=symbol,
         side="BUY",
+        position_side="LONG",
         order_type="MARKET",
         quantity=qty,
         attached_stop_loss=sl_price,

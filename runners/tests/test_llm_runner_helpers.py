@@ -107,6 +107,7 @@ def _make_approved_request() -> OrderRequest:
     return OrderRequest(
         symbol="BTC-USDT",
         side="BUY",
+        position_side="LONG",
         order_type="LIMIT",
         quantity=Decimal("0.1"),
         price=Decimal("80500"),
@@ -163,6 +164,7 @@ def test_build_decision_context_market_order_uses_candle_close() -> None:
     market_request = OrderRequest(
         symbol="BTC-USDT",
         side="BUY",
+        position_side="LONG",
         order_type="MARKET",
         quantity=Decimal("0.1"),
         attached_stop_loss=Decimal("80000"),
