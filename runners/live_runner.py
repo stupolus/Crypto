@@ -304,17 +304,35 @@ async def _warm_history(
     return candles
 
 
+def _trader_equity_baseline() -> Decimal | None:
+    """Hack B (план 01 §6j): на shared VST-аккаунте чужие боты
+    контаминируют equity. Если в env задан ``TRADER_EQUITY_BASELINE``
+    — клампим equity к этому числу для RiskEngine/просадки. Снимется
+    с переходом на отдельный VST-аккаунт.
+    """
+    from core.trader_settings import TraderEquitySettings
+
+    return TraderEquitySettings().equity_baseline
+
+
+def _effective_equity(account_eq: Decimal) -> Decimal:
+    baseline = _trader_equity_baseline()
+    return baseline if baseline is not None else account_eq
+
+
 async def _fetch_equity(private_api: PrivateAPI) -> Decimal:
-    """Equity для RiskEngine = `balance` основного актива (VST/USDT)."""
+    """Equity для RiskEngine = `balance` основного актива (VST/USDT).
+
+    На shared-аккаунте клампится к ``TRADER_EQUITY_BASELINE`` (hack B).
+    """
     balances = await private_api.get_balance()
     if not balances:
         return Decimal("0")
-    # Берём VST если есть (demo), иначе USDT.
     for asset in ("VST", "USDT"):
         for b in balances:
             if b.asset == asset:
-                return b.equity
-    return balances[0].equity
+                return _effective_equity(b.equity)
+    return _effective_equity(balances[0].equity)
 
 
 async def _sync_initial_position(private_api: PrivateAPI, symbol: str) -> OpenPosition | None:
@@ -492,10 +510,11 @@ async def _handle_user_event(
             logger.exception("journal update_from_event failed")
         return
     if isinstance(event, AccountUpdateEvent):
-        # Обновляем equity из push (быстрее REST poll).
+        # Обновляем equity из push (быстрее REST poll). hack B (§6j):
+        # клампим к baseline, если задан TRADER_EQUITY_BASELINE.
         for delta in event.balances:
             if delta.asset in ("VST", "USDT"):
-                state.equity = delta.wallet_balance
+                state.equity = _effective_equity(delta.wallet_balance)
                 logger.debug("equity updated: %s", state.equity)
         # Открытые позиции (упрощённо).
         if event.positions:
@@ -513,7 +532,7 @@ async def _handle_user_event(
                 state.open_position = _build_open_position_from_position(non_zero[0])
         for b in event.balances:
             if b.asset in ("VST", "USDT"):
-                state.equity = b.equity
+                state.equity = _effective_equity(b.equity)
         logger.info(
             "reconcile: equity=%s open=%s",
             state.equity,

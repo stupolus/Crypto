@@ -128,19 +128,40 @@ async def _bingx_snapshot(symbol: str) -> dict[str, object]:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
+def _trader_equity(symbol: str, b: dict[str, object]) -> tuple[Decimal | None, str]:
+    """Hack B (план 01 §6j): эквити трейдера на shared-аккаунте =
+    baseline + sum(uPnL открытых позиций по нашему symbol). Если
+    baseline не задан — возвращаем account-equity (старое поведение,
+    помечаем в источнике).
+    """
+    from core.trader_settings import TraderEquitySettings
+
+    baseline = TraderEquitySettings().equity_baseline
+    if baseline is None:
+        eq = b.get("equity")
+        return (Decimal(str(eq)) if eq is not None else None, "account-equity")
+    ops = cast("list[dict[str, str]]", b.get("open_positions") or [])
+    mine_upnl = sum((Decimal(o["upnl"]) for o in ops if o["symbol"] == symbol), Decimal("0"))
+    return baseline + mine_upnl, f"baseline {baseline} + uPnL({symbol})"
+
+
 def _drawdown(equity: Decimal | None) -> dict[str, object]:
     if equity is None:
         return {}
     hwm = equity
     if _HWM.exists():
         try:
-            hwm = max(Decimal(_HWM.read_text().strip()), equity)
+            stored = Decimal(_HWM.read_text().strip())
+            # Миграция hack B: старый HWM считался от account-equity
+            # (могло быть 101k VST); новый — от трейдер-вклада (≈10k).
+            # Если stored неадекватно большой — сбрасываем.
+            hwm = equity if stored > equity * 2 else max(stored, equity)
         except Exception:
             hwm = equity
     _HWM.parent.mkdir(parents=True, exist_ok=True)
     _HWM.write_text(str(hwm))
     dd = (equity - hwm) / hwm * 100 if hwm > 0 else Decimal("0")
-    return {"hwm": hwm, "drawdown_pct": dd}
+    return {"hwm": hwm, "drawdown_pct": dd, "trader_eq": equity}
 
 
 def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[str, object]) -> str:
@@ -159,6 +180,8 @@ def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[st
             f"Realised P&L: {b.get('realised')} · uPnL: {b.get('unrealised')}",
         ]
         if dd.get("hwm") is not None:
+            src = dd.get("source", "")
+            lines.append(f"Трейдер-вклад: {dd.get('trader_eq')} VST ({src})")
             lines.append(f"Просадка от пика: {dd['drawdown_pct']:.2f}% (HWM {dd['hwm']})")
         if b.get("positions_error"):
             lines.append(f"Открытых позиций: н/д (BingX троттл: {b['positions_error']})")
@@ -216,7 +239,10 @@ async def _send_telegram(text: str) -> bool:
 async def _main_async(symbol: str, to_telegram: bool) -> None:
     j = _journal_stats(_JOURNAL)
     b = await _bingx_snapshot(symbol)
-    dd = _drawdown(b.get("equity") if b.get("ok") else None)  # type: ignore[arg-type]
+    # hack B: просадка считается от трейдер-вклада, не от account.
+    trader_eq, eq_source = _trader_equity(symbol, b) if b.get("ok") else (None, "n/a")
+    dd = _drawdown(trader_eq)
+    dd["source"] = eq_source
     text = _render(symbol, j, b, dd)
     print(text)
     if to_telegram:
