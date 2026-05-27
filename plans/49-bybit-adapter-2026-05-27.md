@@ -9,16 +9,45 @@
 ## Контекст и решение
 
 CLAUDE.md: «Биржа №1 BingX, №2 Bybit (позже)». «Позже» наступило.
-Адаптер Bybit V5 как полноценная вторая точка исполнения, ровно по
-архитектуре BingX-адаптера (`adapters/bingx/`). Стратегии не дублируются
-— сигнал/RiskEngine общие, отличается только адаптер исполнения.
+Уточнение владельца (2026-05-27): **Bybit — это и вторая точка
+исполнения (demo + live, как BingX), И источник исторических
+данных** для анализа/бэктеста, потому что BingX моложе и его
+исторический массив (klines, депт-данные) короче. Сценарий «**данные
+на Bybit, исполнение на BingX**» — отдельный класс использования:
+сигнал считается на длинной истории Bybit, ордер ставится на
+BingX-перпе.
+
+Архитектура: адаптер Bybit V5 по образцу `adapters/bingx/`, стратегии
+exchange-agnostic (`Strategy` protocol + `OrderRequest`). Цена
+паритета: трейдер выбирает execution-биржу в конфиге, не в коде
+стратегии.
 
 **Что НЕ делаем в плане 49:**
 - Не переписываем стратегии под Bybit (они exchange-agnostic уже —
   работают с `Strategy` protocol и `OrderRequest`).
 - Не делаем «арбитраж BingX↔Bybit».
-- Не торгуем live на Bybit до явного отдельного «да» (testnet → smoke →
-  plan-pass → разрешение → live, как делали с BingX-VST).
+- Не торгуем live ни на одной бирже до прохождения testnet/demo
+  цикла + явного «да» (то же правило, что для BingX-VST).
+
+## Кросс-venue паттерн «данные Bybit → исполнение BingX»
+
+Отдельная подзадача, **не** относящаяся к чисто-адаптерному коду:
+
+1. **Symbol-маппинг между биржами.** На BingX `BTC-USDT`, на Bybit
+   `BTCUSDT`. Для TradFi-перпов (NCSI..., NCCO...) — отдельная
+   таблица соответствий (если такие же активы есть на Bybit). Решение:
+   `core/data/cross_venue.py` (фаза 49.6).
+2. **Price reference consistency.** При расчёте стопа/RiskEngine на
+   данных Bybit нельзя использовать Bybit-цену напрямую — стоп
+   ставится на BingX-перпе, цены могут расходиться. Подход — как уже
+   работает в GTAA-executor: ratio-мэппинг (стоп Yahoo→BingX через
+   close-ratio). Применить тот же приём для Bybit-данных.
+3. **Backtest data-loader.** `core/backtest` сейчас читает Bybit-klines
+   через CSV/parquet файлы. Добавить `BybitDataSource` — прямой
+   pull из адаптера, без выгрузки в файлы. Это фаза 49.7.
+4. **Live-режим (live signal + live execution на разных биржах) —
+   запрещён** до явного «да» владельца + отдельного плана с
+   обоснованием cost-model (cross-venue latency, slippage).
 
 ## Безопасность (ДО кода)
 
@@ -152,6 +181,23 @@ CLAUDE.md: «Биржа №1 BingX, №2 Bybit (позже)». «Позже» н
 - Live-guard снимается отдельным коммитом.
 - Phase 0.D из BingX-плана (dead-man timer, kill-switch файл) — переносим.
 
+### 49.6 — Cross-venue (PR #6) — приоритет владельца 2026-05-27
+- `core/data/cross_venue.py`: маппинг `BTC-USDT` ↔ `BTCUSDT` +
+  таблица соответствий для TradFi-перпов (где совпадают).
+- Утилита `cross_venue_price_ratio(bybit_close, bingx_close)` для
+  переноса стоп-уровней между биржами (по образцу того, как
+  GTAA-executor переносит SMA200 с Yahoo-индекса на BingX-перп).
+- Unit-тесты: символы есть/нет, ratio sanity.
+
+### 49.7 — Bybit как data-source для бэктеста (PR #7) — приоритет
+- `core/backtest/datasource/bybit.py`: `BybitDataSource` —
+  использует public klines из адаптера (фаза 49.1) для длинной
+  истории, дольше чем BingX.
+- Подключение в `scripts/run_backtest.py` опцией `--data-source bybit`.
+- Бэктест-прогон любой существующей стратегии на Bybit-данных
+  vs BingX-данных → diff (для сверки, что edge консистентен на длинной
+  истории).
+
 ## Жёсткие стопы
 
 - Каждая фаза = отдельный PR. Не сливать несколько фаз в один.
@@ -166,13 +212,21 @@ CLAUDE.md: «Биржа №1 BingX, №2 Bybit (позже)». «Позже» н
 ## Что нужно от владельца, чтобы начать 49.0
 
 1. **Повернуть ключ** из чата (старый удалить на bybit.com).
-2. **Новый ключ — testnet-only**, без withdraw, с IP whitelist.
-3. **Положить ключ в `/etc/crypto/.env` через Мануса** на VPS (или в
+2. **Новый ключ — без withdraw, с IP whitelist.** Владелец хочет и demo,
+   и live (см. контекст). Решение: **два отдельных ключа**:
+   - `BYBIT_TESTNET_API_KEY` — на api-testnet.bybit.com (для фаз 49.1–49.3).
+   - `BYBIT_LIVE_API_KEY` — на api.bybit.com, **read-only пока** (для
+     фаз 49.6–49.7 — data-source для анализа без риска ордера; в коде
+     `live` режим до фазы 49.5 hard-блокирован для торговли). На trade
+     перевести только когда фаза 49.5 будет завершена + явное «да».
+3. **Положить ключи в `/etc/crypto/.env` через Мануса** на VPS (или в
    локальный `.env`), переменные:
    ```
-   BYBIT_ENV=testnet
-   BYBIT_API_KEY=...
-   BYBIT_API_SECRET=...
+   BYBIT_ENV=testnet          # переключатель текущего режима
+   BYBIT_TESTNET_API_KEY=...
+   BYBIT_TESTNET_API_SECRET=...
+   BYBIT_LIVE_API_KEY=...     # read-only до фазы 49.5
+   BYBIT_LIVE_API_SECRET=...
    BYBIT_RECV_WINDOW_MS=5000
    ```
 4. **Явное «начинай фазу 49.0»** в чате — после этого я двигаюсь
