@@ -1,0 +1,18 @@
+# box_breakout (план 50) — параметры. Дефолты из теории/видео #008,
+# pre-registered, НЕ подгонялись под бэктест.
+
+symbol: BTC-USDT
+timeframe: 15m
+
+box_n: 20                # окно консолидации
+box_max_width_pct: 5.0   # бокс «узкий» = накопление
+vol_sma_window: 20
+breakout_vol_mult: 1.5   # объём свечи-пробоя ≥ 1.5× средн. в боксе
+
+atr_window: 14
+atr_sl_mult: 1.0
+stop_min_pct: 0.3
+tp_r: 1.8                # RR ≈ 1.8 (диапазон видео 1.5–2)
+
+risk_tier: B
+direction_bias: both

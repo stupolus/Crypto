@@ -55,6 +55,22 @@ class CompositeConfig(_Strict):
 
     direction_bias: Literal["both", "long_only", "short_only"] = "both"
 
+    # ── v2-улучшения (план 43). Дефолты = поведение v1 (демо не меняется) ──
+    # 43.1 Confidence-gate: skip если confidence_raw < порога. 0 = выкл.
+    min_confidence: float = Field(default=0.0, ge=0, le=1)
+    # 43.2 Адаптивный TP R по силе сигнала. off → фиксированный tp1_r.
+    tp1_r_adaptive: bool = False
+    tp1_r_min: float | None = Field(default=None, gt=0)
+    tp1_r_max: float | None = Field(default=None, gt=0)
+    # 43.3 ATR-percentile режим-фильтр. [0,1] = пропускает всё (выкл).
+    atr_pct_min: float = Field(default=0.0, ge=0, le=1)
+    atr_pct_max: float = Field(default=1.0, ge=0, le=1)
+    atr_pct_lookback: int = Field(default=200, gt=0)
+
+    # ── v3 (план 44). Default None = выкл; v2 не затронут ──
+    # 44.1 Session-time gate: список разрешённых UTC-часов (0..23). None = любые.
+    session_hours_utc: tuple[int, ...] | None = None
+
 
 class CompositeConfigError(Exception):
     """Ошибка загрузки/валидации config."""
