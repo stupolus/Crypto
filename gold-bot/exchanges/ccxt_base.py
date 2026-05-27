@@ -130,6 +130,19 @@ class CcxtAdapter:
         next_ts = int(fr.get("fundingTimestamp") or fr.get("nextFundingTime") or 0)
         return rate, next_ts
 
+    async def fetch_funding_rate_history(
+        self,
+        symbol: str,
+        since: int | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Историческая funding-rate-серия. Сырые dict'ы ccxt — нормализация
+        в `FundingRate` идёт в marketdata/funding.py."""
+        raw: list[dict[str, Any]] = await self._client.fetch_funding_rate_history(
+            to_canonical(symbol), since, limit
+        )
+        return raw
+
     # ── Account ──
     async def fetch_balance(self) -> Balance:
         raw: dict[str, Any] = await self._client.fetch_balance()
