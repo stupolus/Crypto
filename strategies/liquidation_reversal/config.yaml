@@ -1,4 +1,9 @@
 # liquidation_reversal — методология Щукина (план 21).
+# ⚠️ EDGE НЕ ПОДТВЕРЖДЁН (план 23 закрыт 2026-05-15, аудит 2026-05-27).
+#    Live-запуск заблокирован в runners/live_runner.py. Доступно только
+#    через scripts/run_backtest.py для исследовательских прогонов.
+#    Подробности — strategies/liquidation_reversal/strategy.py docstring
+#    и retro/2026-05-27-щукин-аудит.md.
 # Числа из бизнес/материалы/курсы/dmitry-shukin/, НЕ подгонять под бэктест.
 
 symbol: BTC-USDT

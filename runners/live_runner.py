@@ -150,6 +150,22 @@ def _build_strategy(
             news_calendar=build_earnings_blackout_calendar(cfg.symbol),
         )
     if name == "liquidation_reversal":
+        # АУДИТ 2026-05-27 (retro/2026-05-27-щукин-аудит.md):
+        # план 23 закрыл DOLF как edge НЕ подтверждён (l3 kill-тесты:
+        # ETH PF0.74, портфель overlap-корр. p=0.794 — неотличим от
+        # нуля; BTC-only p≈0.05 = selection bias на 50+ детектор×монета
+        # тестах). Стратегия сохранена для офлайн-бэктеста, но live
+        # запуск hard-блокирован.
+        import os
+
+        if not os.environ.get("LIQ_REVERSAL_FORCE_LIVE"):
+            raise RuntimeError(
+                "liquidation_reversal: edge НЕ подтверждён (план 23, ретро "
+                "2026-05-15 / аудит 2026-05-27). Live-запуск заблокирован. "
+                "Для офлайн-бэктеста используйте scripts/run_backtest.py. "
+                "Обход (на свой риск, нарушает CLAUDE.md): "
+                "LIQ_REVERSAL_FORCE_LIVE=1."
+            )
         from strategies.liquidation_reversal import (
             LiquidationReversalStrategy,
         )
@@ -157,9 +173,6 @@ def _build_strategy(
             get_default_config as liqrev_cfg,
         )
 
-        # Провайдеры (Coinglass/CVD) подключаются в llm_runner когда
-        # есть ключ. Без них стратегия молчит (пустые Static-провайдеры) —
-        # безопасный no-op до фазы 21.3-live/21.4.
         return LiquidationReversalStrategy(config=liqrev_cfg(), risk_engine=risk_engine)
     if name == "composite_signal":
         import os
