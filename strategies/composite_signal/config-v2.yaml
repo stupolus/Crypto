@@ -1,0 +1,42 @@
+# composite v2 (план 43) — 3 структурных улучшения включены.
+# ОТДЕЛЬНЫЙ кандидат. Демо (config.yaml/config-4h-demo.yaml) НЕ
+# затронут. Числа — из теории/дефолтов детекторов, pre-registered,
+# НЕ подогнаны под бэктест. timeframe 4h: тариф Coinglass даёт ≥4h.
+
+symbol: BTC-USDT
+timeframe: 4h
+
+funding_min_history: 30
+funding_pct_high: 0.95
+funding_pct_low: 0.05
+
+liq_spike_min: 3.0
+liq_min_baseline_usd: 50000
+liq_baseline_n: 20
+
+cvd_lookback: 12
+order_flow_threshold: 0.6
+
+oi_lookback: 12
+oi_rise_pct: 2.0
+oi_fall_pct: 2.0
+
+atr_window: 14
+atr_sl_multiplier: 1.5
+stop_min_pct: 0.5
+tp1_r_multiple: 1.5
+risk_tier: B
+direction_bias: both
+
+# ── v2 (план 43) ──
+# 43.1: только консенсус с уверенностью ≥0.6 (отсекаем слабые 2/3).
+min_confidence: 0.6
+# 43.2: TP-цель шире при сильном сигнале (1.0R..2.5R по confidence).
+tp1_r_adaptive: true
+tp1_r_min: 1.0
+tp1_r_max: 2.5
+# 43.3: торгуем только в «рабочей» волатильности (отсекаем мёртвый
+# чоп <30-перцентиля и блоу-офф >95).
+atr_pct_min: 0.3
+atr_pct_max: 0.95
+atr_pct_lookback: 200

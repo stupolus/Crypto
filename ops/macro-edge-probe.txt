@@ -1,0 +1,17 @@
+macro-edge probe (start 2018, n=2105, Bonferroni α=0.00417)
+
+Lag-correlation (perm test):
+  VIX→BTC        k=1  obs=+0.0192  p=0.3893  —
+  VIX→BTC        k=2  obs=-0.0251  p=0.2494  —
+  VIX→BTC        k=3  obs=-0.0057  p=0.7936  —
+  DXY→BTC        k=1  obs=+0.0127  p=0.5602  —
+  DXY→BTC        k=2  obs=-0.0112  p=0.6087  —
+  DXY→BTC        k=3  obs=+0.0439  p=0.0440  —
+
+Conditional mean (top vs bottom decile, perm test):
+  VIX→BTC        k=1  obs=-0.0009  p=0.8396  —
+  VIX→BTC        k=2  obs=+0.0019  p=0.6832  —
+  VIX→BTC        k=3  obs=-0.0061  p=0.1789  —
+  DXY→BTC        k=1  obs=-0.0023  p=0.5777  —
+  DXY→BTC        k=2  obs=-0.0017  p=0.7066  —
+  DXY→BTC        k=3  obs=+0.0064  p=0.1599  —

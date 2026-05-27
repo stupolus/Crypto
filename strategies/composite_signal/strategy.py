@@ -20,6 +20,7 @@ import logging
 import uuid
 from collections import deque
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 
@@ -50,6 +51,7 @@ from core.signals import (
     detect_liquidation_sweep,
     detect_oi_trend,
     detect_order_flow,
+    percentile_rank,
 )
 from strategies.composite_signal.config import CompositeConfig
 
@@ -133,6 +135,11 @@ class CompositeSignalStrategy:
         if result.candidate is None:
             return None
 
+        # 43.1 Confidence-gate (v2; default min_confidence=0 → no-op).
+        confidence = result.candidate.confidence_raw
+        if not self._confidence_ok(confidence):
+            return None
+
         side: OrderSide = "BUY" if result.candidate.action == "BUY" else "SELL"
         if self._cfg.direction_bias == "long_only" and side == "SELL":
             return None
@@ -140,10 +147,16 @@ class CompositeSignalStrategy:
             return None
         if not self._oi_gate_passes(side, ts):
             return None
+        # 43.3 ATR-percentile режим-фильтр (v2; default [0,1] → no-op).
+        if not self._atr_regime_ok(ctx.history[:-1]):
+            return None
+        # 44.1 Session-time gate (v3; default None → no-op).
+        if not self._session_ok(ts):
+            return None
 
         entry = candle.close
         stop = self._compute_stop(entry, side, ctx.history[:-1])
-        tp1 = self._compute_tp1(entry, stop, side)
+        tp1 = self._compute_tp1(entry, stop, side, confidence)
         risk_side = Side.LONG if side == "BUY" else Side.SHORT
 
         decision = self._risk.evaluate(
@@ -264,10 +277,54 @@ class CompositeSignalStrategy:
         dist = max(sl_dist, min_dist)
         return entry - dist if side == "BUY" else entry + dist
 
-    def _compute_tp1(self, entry: Decimal, stop: Decimal, side: OrderSide) -> Decimal:
+    def _compute_tp1(
+        self, entry: Decimal, stop: Decimal, side: OrderSide, confidence: float
+    ) -> Decimal:
         dist = abs(entry - stop)
-        r = Decimal(str(self._cfg.tp1_r_multiple))
+        if self._cfg.tp1_r_adaptive:
+            # 43.2 R линейно от силы сигнала: r_min..r_max по confidence.
+            r_min = self._cfg.tp1_r_min or self._cfg.tp1_r_multiple
+            r_max = self._cfg.tp1_r_max or self._cfg.tp1_r_multiple
+            c = min(max(confidence, 0.0), 1.0)
+            r = Decimal(str(r_min + (r_max - r_min) * c))
+        else:
+            r = Decimal(str(self._cfg.tp1_r_multiple))
         return entry + r * dist if side == "BUY" else entry - r * dist
+
+    def _confidence_ok(self, confidence: float) -> bool:
+        """43.1 v2 confidence-gate. Default min_confidence=0 → всегда True."""
+        return confidence >= self._cfg.min_confidence
+
+    def _session_ok(self, ts_ms: int) -> bool:
+        """44.1 v3 session-time gate. Default None → всегда True."""
+        allowed = self._cfg.session_hours_utc
+        if allowed is None:
+            return True
+        return datetime.fromtimestamp(ts_ms / 1000, UTC).hour in allowed
+
+    def _atr_regime_ok(self, closed: Sequence[Kline]) -> bool:
+        """43.3 ATR-percentile фильтр режима. Default [0,1] → True (выкл)."""
+        lo = self._cfg.atr_pct_min
+        hi = self._cfg.atr_pct_max
+        if lo <= 0.0 and hi >= 1.0:
+            return True
+        w = self._cfg.atr_window
+        lookback = self._cfg.atr_pct_lookback
+        if len(closed) < w + 2:
+            return False
+        atr_now = atr(closed, w)
+        atrs: list[Decimal] = []
+        for end in range(w + 1, len(closed) + 1):
+            window = closed[max(0, end - (w + 1)) : end]
+            if len(window) < w + 1:
+                continue
+            atrs.append(atr(window, w))
+            if len(atrs) >= lookback:
+                break
+        if not atrs:
+            return False
+        rank = percentile_rank(atrs, atr_now)
+        return Decimal(str(lo)) <= rank <= Decimal(str(hi))
 
     def _roll_day_if_needed(self, ts_ms: int) -> None:
         day = ts_ms // _DAY_MS

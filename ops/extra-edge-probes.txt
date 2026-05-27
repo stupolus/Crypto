@@ -1,0 +1,29 @@
+extra-edge-probes (start 2018, n=3060)
+
+Probe A: Cross-crypto (BTC↔ETH), Bonferroni α=0.00417
+
+  Lag-correlation:
+  BTC→ETH lag-corr       k=1  obs=-0.0569  p=0.0025  ★ значимо
+  ETH→BTC lag-corr       k=1  obs=-0.0662  p=0.0005  ★ значимо
+  BTC→ETH lag-corr       k=2  obs=+0.0392  p=0.0300  —
+  ETH→BTC lag-corr       k=2  obs=+0.0332  p=0.0625  —
+  BTC→ETH lag-corr       k=3  obs=+0.0283  p=0.1059  —
+  ETH→BTC lag-corr       k=3  obs=-0.0096  p=0.5722  —
+
+  Conditional mean (top vs bottom decile):
+  BTC→ETH cond-mean      k=1  obs=-0.0068  p=0.1044  —
+  ETH→BTC cond-mean      k=1  obs=-0.0068  p=0.0375  —
+  BTC→ETH cond-mean      k=2  obs=+0.0048  p=0.2364  —
+  ETH→BTC cond-mean      k=2  obs=+0.0017  p=0.5862  —
+  BTC→ETH cond-mean      k=3  obs=+0.0052  p=0.1949  —
+  ETH→BTC cond-mean      k=3  obs=+0.0009  p=0.7636  —
+
+Probe B: Day-of-week BTC, Bonferroni α=0.00714
+
+  Mon    mean_diff=+0.00243  p=0.1449  —
+  Tue    mean_diff=-0.00120  p=0.4798  —
+  Wed    mean_diff=+0.00276  p=0.1104  —
+  Thu    mean_diff=-0.00455  p=0.0080  —
+  Fri    mean_diff=+0.00149  p=0.3758  —
+  Sat    mean_diff=+0.00032  p=0.8551  —
+  Sun    mean_diff=-0.00124  p=0.4678  —

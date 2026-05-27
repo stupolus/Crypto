@@ -25,6 +25,7 @@ from parsers.coinglass.backfill import backfill_providers, map_symbol
 from parsers.coinglass.client import CoinglassClient
 from scripts.run_backtest import load_candles, print_summary
 from strategies.composite_signal import CompositeSignalStrategy, get_default_config
+from strategies.composite_signal.config import load_config as load_comp_config
 
 _DAY_MS = 86_400_000
 
@@ -83,6 +84,12 @@ def main() -> None:
     p.add_argument("--interval", default="15m")
     p.add_argument("--months", type=int, default=12)
     p.add_argument("--split-fraction", type=float, default=None)
+    p.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Альт. composite-config (напр. config-v2.yaml). Default — config.yaml.",
+    )
     args = p.parse_args()
 
     if not args.candles.exists():
@@ -109,7 +116,8 @@ def main() -> None:
             "Запустите в окружении с ключом."
         )
 
-    cfg = get_default_config().model_copy(update={"symbol": args.symbol})
+    base_cfg = load_comp_config(args.config) if args.config else get_default_config()
+    cfg = base_cfg.model_copy(update={"symbol": args.symbol})
     bt_cfg = load_config()
 
     def _make() -> CompositeSignalStrategy:

@@ -212,3 +212,63 @@ def test_direction_bias_long_only_blocks_short() -> None:
         oi_provider=_OI(rising=False),
     )
     assert _run(s, 9, trig) is None
+
+
+# ── v2 улучшения (план 43) — демо (v1) не затронуто ──────────────────
+
+
+def test_v2_defaults_preserve_v1() -> None:
+    """Без новых ключей конфиг = поведение v1 (демо байт-в-байт)."""
+    c = _cfg()
+    assert c.min_confidence == 0.0
+    assert c.tp1_r_adaptive is False
+    assert c.tp1_r_min is None and c.tp1_r_max is None
+    assert c.atr_pct_min == 0.0 and c.atr_pct_max == 1.0
+
+
+def test_adaptive_tp_scales_with_confidence() -> None:
+    s = CompositeSignalStrategy(
+        _cfg(tp1_r_adaptive=True, tp1_r_min=1.0, tp1_r_max=3.0), RiskEngine()
+    )
+    entry, stop = Decimal("100"), Decimal("90")  # dist=10
+    assert s._compute_tp1(entry, stop, "BUY", 0.0) == Decimal("110")
+    assert s._compute_tp1(entry, stop, "BUY", 1.0) == Decimal("130")
+    assert s._compute_tp1(entry, stop, "BUY", 0.5) == Decimal("120")
+    # Не-adaptive (v1): фиксированный tp1_r_multiple=2.0 → 120, confidence игнор.
+    s1 = CompositeSignalStrategy(_cfg(), RiskEngine())
+    assert s1._compute_tp1(entry, stop, "BUY", 0.0) == Decimal("120")
+
+
+def test_atr_regime_gate() -> None:
+    closed = [_k(i * _STEP) for i in range(3)]  # < atr_window+2 → мало истории
+    # v1 default: фильтр выключен ([0,1]) → True даже при короткой истории.
+    assert CompositeSignalStrategy(_cfg(), RiskEngine())._atr_regime_ok(closed) is True
+    # v2: фильтр включён, истории мало → False (не торгуем вслепую).
+    s = CompositeSignalStrategy(_cfg(atr_pct_min=0.3, atr_pct_max=0.9), RiskEngine())
+    assert s._atr_regime_ok(closed) is False
+
+
+def test_confidence_gate() -> None:
+    """43.1 порог по силе сигнала. Default (0) пропускает всё."""
+    assert CompositeSignalStrategy(_cfg(), RiskEngine())._confidence_ok(0.0) is True
+    s = CompositeSignalStrategy(_cfg(min_confidence=0.6), RiskEngine())
+    assert s._confidence_ok(0.59) is False
+    assert s._confidence_ok(0.6) is True
+    assert s._confidence_ok(0.95) is True
+
+
+def test_v3_session_gate_default_passes_any_hour() -> None:
+    """44.1 default session_hours_utc=None → пропускает любой ts."""
+    s = CompositeSignalStrategy(_cfg(), RiskEngine())
+    assert s._session_ok(0) is True
+    assert s._session_ok(1_700_000_000_000) is True
+    assert _cfg().session_hours_utc is None  # v2 backward-safe
+
+
+def test_v3_session_gate_band() -> None:
+    """v3 band (13..15 UTC): внутри True, снаружи False."""
+    s = CompositeSignalStrategy(_cfg(session_hours_utc=(13, 14, 15)), RiskEngine())
+    # 2024-01-01 14:00 UTC
+    assert s._session_ok(1_704_117_600_000) is True
+    # 2024-01-01 03:00 UTC
+    assert s._session_ok(1_704_078_000_000) is False
