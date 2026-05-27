@@ -170,6 +170,7 @@ class CompositeSignalStrategy:
         return OrderRequest(
             symbol=self._cfg.symbol,
             side=side,
+            position_side="LONG" if side == "BUY" else "SHORT",
             order_type="MARKET",
             quantity=decision.quantity,
             attached_stop_loss=stop,

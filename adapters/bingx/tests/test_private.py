@@ -420,6 +420,7 @@ async def test_place_order_market_with_attached_sl_serializes_stop_loss_as_json(
         req = OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
             attached_stop_loss=Decimal("60000"),
@@ -462,6 +463,7 @@ async def test_place_order_limit_with_take_profit_includes_price_and_tif(
         req = OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="LIMIT",
             quantity=Decimal("0.001"),
             price=Decimal("65000"),
@@ -487,6 +489,7 @@ def test_order_request_rejects_entry_without_stop_loss() -> None:
         OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
         )
@@ -497,6 +500,7 @@ def test_order_request_rejects_reduce_only_with_stop_loss() -> None:
         OrderRequest(
             symbol="BTC-USDT",
             side="SELL",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
             reduce_only=True,
@@ -526,6 +530,7 @@ def test_order_request_rejects_limit_without_price() -> None:
         OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="LIMIT",
             quantity=Decimal("0.001"),
             attached_stop_loss=Decimal("60000"),
@@ -537,6 +542,7 @@ def test_order_request_rejects_market_with_price() -> None:
         OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
             price=Decimal("65000"),
@@ -859,6 +865,7 @@ async def test_place_order_compensating_close_when_ack_missing_stop_loss(
         req = OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
             attached_stop_loss=Decimal("60000"),
@@ -885,6 +892,7 @@ async def test_place_order_accepts_ack_with_stop_loss_set(cfg: BingXConfig) -> N
         req = OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.001"),
             attached_stop_loss=Decimal("60000"),

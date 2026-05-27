@@ -66,6 +66,7 @@ class _OneShotLongStrategy:
         return OrderRequest(
             symbol="BTC-USDT",
             side="BUY",
+            position_side="LONG",
             order_type="MARKET",
             quantity=Decimal("0.01"),
             attached_stop_loss=entry * Decimal("0.99"),
@@ -210,6 +211,7 @@ def test_short_take_profit_path(cfg: BacktestConfig) -> None:
             return OrderRequest(
                 symbol="BTC-USDT",
                 side="SELL",
+                position_side="SHORT",
                 order_type="MARKET",
                 quantity=Decimal("0.01"),
                 attached_stop_loss=entry * Decimal("1.01"),
@@ -255,6 +257,7 @@ def test_summary_drawdown_calculation(cfg: BacktestConfig) -> None:
             return OrderRequest(
                 symbol="BTC-USDT",
                 side="BUY",
+                position_side="LONG",
                 order_type="MARKET",
                 quantity=Decimal("0.01"),
                 attached_stop_loss=sl,
@@ -289,6 +292,7 @@ def test_strategy_cannot_send_signal_while_position_open(cfg: BacktestConfig) ->
             return OrderRequest(
                 symbol="BTC-USDT",
                 side="BUY",
+                position_side="LONG",
                 order_type="MARKET",
                 quantity=Decimal("0.001"),
                 attached_stop_loss=ctx.current_candle.close * Decimal("0.99"),

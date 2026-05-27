@@ -34,6 +34,7 @@ def _make_request(
     return OrderRequest(
         symbol="BTC-USDT",
         side=side,
+        position_side="LONG" if side == "BUY" else "SHORT",
         order_type=order_type,
         quantity=Decimal("0.1"),
         price=price,
