@@ -106,8 +106,11 @@ async def _bingx_snapshot(symbol: str) -> dict[str, object]:
                 out["ok"] = False
                 out["error"] = f"balance: {type(e).__name__}: {e}"
             # Позиции (best-effort: троттл/ошибка не валит equity).
+            # БЕЗ symbol-фильтра: equity.unrealized_profit — аккаунт-
+            # уровневый; чтобы объяснить, откуда uPnL ≠ 0 при «нет
+            # позиций по BTC», показываем ВСЕ позиции аккаунта.
             try:
-                positions = await api.get_positions(symbol=symbol)
+                positions = await api.get_positions()
                 out["open_positions"] = [
                     {
                         "symbol": p.symbol,
@@ -161,14 +164,18 @@ def _render(symbol: str, j: dict[str, object], b: dict[str, object], dd: dict[st
             lines.append(f"Открытых позиций: н/д (BingX троттл: {b['positions_error']})")
         else:
             ops = cast("list[dict[str, str]]", b.get("open_positions") or [])
+            mine = [o for o in ops if o["symbol"] == symbol]
+            others = [o for o in ops if o["symbol"] != symbol]
             lines.append(
-                "Открытых позиций: "
-                + (
-                    ", ".join(f"{o['symbol']} {o['amount']} (uPnL {o['upnl']})" for o in ops)
-                    if ops
-                    else "нет"
-                )
+                f"Позиции {symbol}: "
+                + (", ".join(f"{o['amount']} (uPnL {o['upnl']})" for o in mine) if mine else "нет")
             )
+            if others:
+                lines.append(
+                    "Прочие позиции на VST-аккаунте (не трейдера): "
+                    + ", ".join(f"{o['symbol']} {o['amount']} (uPnL {o['upnl']})" for o in others)
+                    + " — объясняет uPnL ≠ 0 при «нет позиций по BTC»."
+                )
     else:
         lines.append(f"⚠️ BingX недоступен: {b.get('error')}")
     if j.get("exists"):
