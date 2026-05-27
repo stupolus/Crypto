@@ -23,6 +23,7 @@ import os
 import sys
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -78,7 +79,7 @@ def _ts_fmt(ms: int | None) -> str | None:
     return datetime.fromtimestamp(ms / 1000, UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _get(client: httpx.Client, path: str, **params: str | int) -> dict[str, object]:
+def _get(client: httpx.Client, path: str, **params: str | int) -> dict[str, Any]:
     r = client.get(_BYBIT_BASE + path, params=params, headers=_headers(), timeout=20)
     return r.json()  # type: ignore[no-any-return]
 
@@ -167,7 +168,7 @@ def probe_funding(client: httpx.Client, symbol: str, limit: int = 200) -> ProbeR
     )
 
 
-def server_time(client: httpx.Client) -> dict[str, object]:
+def server_time(client: httpx.Client) -> dict[str, Any]:
     return _get(client, "/v5/market/time")
 
 
