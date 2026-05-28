@@ -1,0 +1,42 @@
+# Резервный systemd-юнит, если Docker недоступен. Запускает paper-runner
+# напрямую из venv. Файл копируется в /etc/systemd/system/.
+#
+# Установка (на VPS, под root):
+#   cp /opt/gold-bot/deploy/systemd/gold-bot-paper.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now gold-bot-paper
+#   journalctl -u gold-bot-paper -f
+#
+# Предполагает:
+#   /opt/gold-bot/                 — клон репозитория, ветка gold, подпапка gold-bot/
+#   /opt/gold-bot/.venv/           — Python 3.12 venv с зависимостями
+#   /var/lib/gold-bot/             — рабочий каталог, владелец goldbot:goldbot
+#   /etc/gold-bot/paper.env        — env (GOLDBOT_TG_TOKEN/...), права 600 goldbot
+
+[Unit]
+Description=gold-bot paper-runner (никаких реальных ордеров, plan 06+07)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=goldbot
+Group=goldbot
+WorkingDirectory=/opt/gold-bot/gold-bot
+EnvironmentFile=-/etc/gold-bot/paper.env
+ExecStart=/opt/gold-bot/.venv/bin/python -m scripts.run_paper
+Restart=on-failure
+RestartSec=10
+# Логи → journald (журналируем как обычный stdout).
+StandardOutput=journal
+StandardError=journal
+
+# Защитные ограничения systemd. Не пускаем процесс никуда лишнего.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/gold-bot
+
+[Install]
+WantedBy=multi-user.target

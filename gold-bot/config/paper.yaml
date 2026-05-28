@@ -1,0 +1,20 @@
+# Параметры paper-runner'а. Числа риска (size, лимиты, kill-switch) сюда
+# не дублируются — они в config/risk.yaml (единственный источник истины
+# по правилам gold-bot CLAUDE.md §5).
+#
+# taker_fee и slippage_pct — реалистичные дефолты для перпов на BingX
+# (taker ~0.05%, slippage ~0.05%). После недели paper-наблюдения
+# slippage_pct калибруется по факт. разнице (open_next vs ожидаемая цена).
+
+exchange: bingx
+symbols:
+  - PAXG/USDT:USDT
+  - XAUT/USDT:USDT
+timeframe: 15m
+starting_equity: "10000"      # виртуальный банк на старте paper, см. risk-profile.md §«Фазы капитала»
+poll_interval_seconds: 30     # на 15m свечах опрос раз в 30 сек — с запасом
+close_grace_seconds: 10       # ждём 10 сек после закрытия свечи, чтобы биржа точно её отдала
+taker_fee: "0.0005"           # 0.05% (источник: docs.bingx.com/en/contract-futures/contract-rules)
+slippage_pct: "0.0005"        # 0.05% оценка, пересмотреть после недели наблюдения
+journal_path: "/var/lib/gold-bot/paper.sqlite"
+heartbeat_interval_seconds: 300
