@@ -20,12 +20,12 @@ import logging
 import time
 from collections.abc import Mapping
 from types import TracebackType
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 from urllib.parse import urlencode
 
 import httpx
 
-from adapters.bybit.exceptions import APIError, AuthError, NetworkError
+from adapters.bybit.exceptions import APIError, AuthError, NetworkError, RateLimited
 from adapters.bybit.settings import BybitSettings
 from adapters.bybit.signing import sign_query
 
@@ -208,15 +208,30 @@ class BybitClient:
             if resp.status_code in self.RETRY_STATUSES and attempt + 1 < retries:
                 await asyncio.sleep(2 ** (attempt + 1))
                 continue
-            break
 
+            # Envelope-уровень: retCode 10006/10018/10429 = server-side
+            # rate-limit (transport уже прошёл, но Bybit ругается «too
+            # many visits»). На идемпотентных методах ретраим, иначе —
+            # пробрасываем как RateLimited (caller решает).
+            try:
+                return self._parse_envelope(resp, path)
+            except RateLimited:
+                if attempt + 1 < retries:
+                    await asyncio.sleep(2 ** (attempt + 1))
+                    continue
+                raise
+
+        # Если break-нулись по non-RETRY_STATUSES до try выше — резерв.
         return self._parse_envelope(resp, path)
+
+    # Коды Bybit V5, считающиеся retry-friendly на уровне envelope.
+    _RATE_LIMIT_CODES: ClassVar[frozenset[int]] = frozenset({10006, 10018, 10429})
 
     def _parse_envelope(self, resp: httpx.Response, path: str) -> dict[str, Any]:
         """V5-envelope: ``{retCode, retMsg, result, retExtInfo, time}``.
 
-        Поднимает ``APIError`` если ``retCode != 0``. Возвращает
-        содержимое ``result`` как dict (для public).
+        Поднимает ``RateLimited`` для retCode 10006/10018/10429 (retry-able),
+        ``AuthError`` для 10003/10004, иначе ``APIError``.
         """
         if resp.status_code != 200:
             raise NetworkError(f"{path}: HTTP {resp.status_code}: {resp.text[:200]}")
@@ -230,11 +245,15 @@ class BybitClient:
         ret_code = data.get("retCode")
         if ret_code != 0:
             ret_msg = str(data.get("retMsg", ""))
+            code_int = int(ret_code or 0)
             # Auth-классные коды Bybit: 10003 (invalid api key), 10004 (sign),
-            # 10005 (permissions), 10006 (rate limit ip), 10007 (recv window).
-            if ret_code in (10003, 10004):
-                raise AuthError(f"{path}: code={ret_code} msg={ret_msg}")
-            raise APIError(int(ret_code or 0), ret_msg, path)
+            # 10005 (permissions), 10007 (recv window).
+            if code_int in (10003, 10004):
+                raise AuthError(f"{path}: code={code_int} msg={ret_msg}")
+            # Server-side rate-limit — retry-able.
+            if code_int in self._RATE_LIMIT_CODES:
+                raise RateLimited(code_int, ret_msg, path)
+            raise APIError(code_int, ret_msg, path)
         result = data.get("result")
         if result is None:
             return {}
