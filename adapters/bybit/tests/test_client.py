@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from adapters.bybit.client import BybitClient
-from adapters.bybit.exceptions import APIError, AuthError
+from adapters.bybit.exceptions import APIError, AuthError, RateLimited
 from adapters.bybit.settings import BybitSettings
 
 
@@ -146,3 +146,50 @@ async def test_sync_time_sets_offset() -> None:
     # Точную дельту не предсказать (зависит от now()), но offset должен
     # быть в районе (server - local).
     assert offset > 0
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_envelope_retries_then_succeeds() -> None:
+    """retCode 10006 «Too many visits» → retry → следующий ответ ok."""
+    settings = BybitSettings(_env_file=None, env="testnet")
+    async with respx.mock(base_url=_TESTNET_URL) as mock:
+        route = mock.get("/v5/market/time")
+        route.side_effect = [
+            httpx.Response(200, json=_err_envelope(10006, "Too many visits!")),
+            httpx.Response(200, json=_ok_envelope({"timeSecond": "1700000000"})),
+        ]
+        async with BybitClient(settings=settings, retries=2, timeout_s=2.0) as c:
+            data = await c.public_get("/v5/market/time", params={})
+    assert data["timeSecond"] == "1700000000"
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_envelope_exhausted_raises() -> None:
+    """Если ретраи исчерпаны и rate-limit держится — RateLimited (subclass APIError)."""
+    settings = BybitSettings(_env_file=None, env="testnet")
+    async with respx.mock(base_url=_TESTNET_URL) as mock:
+        mock.get("/v5/market/time").mock(
+            return_value=httpx.Response(200, json=_err_envelope(10006, "Too many visits!"))
+        )
+        async with BybitClient(settings=settings, retries=2, timeout_s=2.0) as c:
+            with pytest.raises(RateLimited) as exc_info:
+                await c.public_get("/v5/market/time", params={})
+    assert exc_info.value.code == 10006
+    # RateLimited — подкласс APIError, ловится и тем и тем.
+    assert isinstance(exc_info.value, APIError)
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_envelope_codes_10018_10429() -> None:
+    """10018 (IP rate limit) и 10429 (request rate limit) тоже RateLimited."""
+    settings = BybitSettings(_env_file=None, env="testnet")
+    for code in (10018, 10429):
+        async with respx.mock(base_url=_TESTNET_URL) as mock:
+            mock.get("/v5/market/time").mock(
+                return_value=httpx.Response(200, json=_err_envelope(code, "rate limited"))
+            )
+            async with BybitClient(settings=settings, retries=1, timeout_s=2.0) as c:
+                with pytest.raises(RateLimited) as exc_info:
+                    await c.public_get("/v5/market/time", params={})
+        assert exc_info.value.code == code
