@@ -93,6 +93,7 @@ testpaths = [
     "core/signals/tests",
     "parsers/coinglass/tests",
     "parsers/macro/tests",
+    "parsers/openinsider/tests",
     "parsers/twitter/tests",
     "runners/tests",
     "scripts/tests",
