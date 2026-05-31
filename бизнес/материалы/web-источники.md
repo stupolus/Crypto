@@ -161,6 +161,50 @@ CMC = global metrics + sentiment-like signals + cross-source verification.
 
 ---
 
+## 5. Finviz — https://finviz.com/
+
+**Что:** Популярный stock screener + новостной агрегатор + insider
+trading + heatmap S&P500 + fundamental snapshot per ticker.
+
+**Доступ (probe 2026-05-31):**
+- HTML с UA + follow redirects (`-L`) — ✅ работает, ~180-300 KB страницы.
+- Старые URL `/quote.ashx?t=NVDA` → 301 редирект на `/stock?t=NVDA`.
+- **CSV-export без auth не работает** (`/export.ashx?...` отдаёт HTML, а не CSV).
+- Elite-подписка ($25/мес) даёт REST API + intraday + расширенные фильтры.
+- Cloudflare фильтр (как Myfxbook): нужен Mozilla User-Agent, иначе блок.
+
+**Формат данных (HTML scraping):**
+- `quote.ashx?t=TICKER` → snapshot-table2 с фундаменталом:
+  P/E, EPS, dividend yield, market cap, beta, sector, RSI(14), etc.
+- `insidertrading.ashx` → insider feed (overlap с OpenInsider, но
+  агрегировано по тикерам удобнее).
+- `news.ashx?t=TICKER` → tagged news per ticker.
+- `screener.ashx?...` → filter-based stock lists.
+
+**Релевантность проекту:**
+- **Plan 24 (фундаментал акций)** — был отложен; Finviz снимает блокер
+  с фундаментальными данными для US-stocks (BingX TradFi-перпы
+  NCSKAAPL/NCSKNVDA/NCSKTSLA/NCSKGOOGL/NCSKMETA/NCSKMSTR).
+- **Catalyst tracking** — earnings dates, news per ticker для конкретных
+  стоковых стратегий.
+- **Heatmap S&P500** — режимный фильтр (broad-market color = вес equity).
+- **Insider** — overlap с OpenInsider; не строим параллельный парсер,
+  если openinsider покрывает.
+
+**Технические особенности (probe-результаты):**
+- Структура HTML изменилась: новые классы `snapshot-table2`,
+  `body-table styled-table-new`. Старые селекторы из туториалов 2018-2020
+  не работают.
+- Часть данных рендерится JS — для полного scraping может понадобиться
+  Playwright/Selenium (overkill для нашего use-case).
+- Rate-limit: разумно ≤1 req/sec, иначе Cloudflare заблокирует.
+
+**Действие:** добавить отдельным планом если плану 24 или новой стоковой
+стратегии понадобятся фундаментальные метрики. Парсер сложнее
+OpenInsider — JS-render и часто меняющиеся CSS-классы.
+
+---
+
 ## Workflow при добавлении нового web-источника
 
 1. Запись в этот файл (что, доступ, формат, релевантность).
