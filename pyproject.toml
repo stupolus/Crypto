@@ -81,6 +81,10 @@ exclude = ["venv", ".venv", "build"]
 module = ["respx.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["playwright.*", "faster_whisper.*"]
+ignore_missing_imports = true
+
 # ─── pytest ──────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
