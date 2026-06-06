@@ -16,7 +16,7 @@
 
 ## Стек
 
-Python 3.12+ (бот/парсеры/бэктест), TS-дашборд позже. Биржа №1 BingX, №2 Bybit (позже). RWA-данные Hyperliquid, heatmap Coinglass, транскрипция Whisper. Хранилище Parquet + SQLite/DuckDB → PostgreSQL по мере роста. Деплой VPS в Азии.
+Python 3.12+ (бот/парсеры/бэктест), TS-дашборд позже. Биржа №1 BingX, №2 Bybit (позже). RWA-данные Hyperliquid, heatmap Coinglass, транскрипция Whisper, чтение PDF — markitdown. Хранилище Parquet + SQLite/DuckDB → PostgreSQL по мере роста. Деплой VPS в Азии.
 
 ## Структура
 
