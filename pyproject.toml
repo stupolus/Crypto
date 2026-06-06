@@ -28,6 +28,12 @@ dashboard = [
     "fastapi>=0.115,<0.117",
     "uvicorn[standard]>=0.32,<0.36",
 ]
+# Разбор материалов из бизнес/inbox/. markitdown — единый ридер PDF (PDF → Markdown).
+# Не нужен торговому runtime, ставится только для конвейера «разбери inbox»:
+#   pip install -e ".[materials]"
+materials = [
+    "markitdown[pdf]>=0.1,<0.2",
+]
 
 [build-system]
 requires = ["setuptools>=70"]
@@ -79,6 +85,10 @@ exclude = ["venv", ".venv", "build"]
 
 [[tool.mypy.overrides]]
 module = ["respx.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["markitdown.*"]
 ignore_missing_imports = true
 
 # ─── pytest ──────────────────────────────────────────────────────────────────
