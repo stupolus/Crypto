@@ -1,0 +1,12 @@
+# Kronos сам по себе НЕ pip-пакет (нет setup.py/pyproject в репо) —
+# исходники клонируются в kronos_integration/Kronos/ (см. install.sh),
+# а здесь только его рантайм-зависимости (из Kronos/requirements.txt).
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+numpy
+pandas==2.2.2
+einops==0.8.1
+huggingface_hub==0.33.1
+matplotlib==3.9.3
+tqdm==4.67.1
+safetensors==0.6.2
