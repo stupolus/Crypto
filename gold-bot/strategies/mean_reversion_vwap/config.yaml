@@ -1,0 +1,13 @@
+# Параметры стратегии mean-reversion у VWAP±ATR (15m). Только параметры
+# стратегии; риск (risk_pct) приходит из risk-profile/RiskConfig, не дублируется здесь.
+# Параметры обоснованы логикой (CLAUDE.md §6 — не подгон под Sharpe):
+#   vwap_window 32 ≈ 8 часов на 15m; atr_period 14 — классика; k_entry 1.8 ATR —
+#   «значимое» отклонение; k_stop 1.0 ATR за входом — буфер от шума.
+
+vwap_window: 32
+atr_period: 14
+k_entry: 1.8
+k_stop: 1.0
+session_start_hour_utc: 7   # боевое окно золота (risk-profile): Лондон+NY
+session_end_hour_utc: 22
+asset_class: metals

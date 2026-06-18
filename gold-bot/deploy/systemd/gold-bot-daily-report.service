@@ -1,0 +1,17 @@
+# One-shot юнит: печатает daily-report и шлёт в Telegram. Дёргается
+# таймером gold-bot-daily-report.timer @ 00:05 UTC ежедневно.
+
+[Unit]
+Description=gold-bot paper daily report
+After=gold-bot-paper.service
+Wants=gold-bot-paper.service
+
+[Service]
+Type=oneshot
+User=goldbot
+Group=goldbot
+WorkingDirectory=/opt/gold-bot/gold-bot
+EnvironmentFile=-/etc/gold-bot/paper.env
+ExecStart=/opt/gold-bot/.venv/bin/python -m scripts.daily_report
+StandardOutput=journal
+StandardError=journal

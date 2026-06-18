@@ -1,0 +1,11 @@
+# Параметры Donchian-breakout (15m, золото). Обоснование каждого числа — в plan 10.
+# Запрещено крутить под бэктест: edge должен быть обоснован логикой.
+
+donchian_window: 50           # 12.5h окна на 15m: дневной экстремум, фильтр шума
+atr_period: 14                # классика, не подгон
+k_stop: "2.0"                 # широкий стоп, иначе fake-out на пробое
+k_tp: "3.5"                   # R:R 1.75 → PF 1.4 при winrate 40% (break-even ~37%)
+cooldown_bars: 16             # 4h cooldown: не открываемся на «дробях» одного движения
+session_start_hour_utc: 7     # London open (то же окно что и план 05 — для сравнимости)
+session_end_hour_utc: 22
+asset_class: metals

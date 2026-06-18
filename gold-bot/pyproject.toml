@@ -1,0 +1,71 @@
+[project]
+name = "gold-bot"
+version = "0.0.1"
+description = "Intraday bot for tokenized gold/silver, equity perps and crypto majors (BingX + Bybit)"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10,<3",
+    "pyarrow>=16",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<0.27",
+    "ruff>=0.9,<0.10",
+    "mypy>=1.14,<2",
+]
+# Биржевой слой подключается отдельно, чтобы держать ядро лёгким.
+exchange = [
+    "ccxt>=4.4,<5",
+]
+
+# ─── Ruff ──────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",   # длину строк держит форматтер
+    "RUF001", # неоднозначные символы (кириллица — ложные срабатывания)
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["B011"]
+
+# ─── mypy ──────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["ccxt.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+follow_imports = "skip"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true
+
+# ─── pytest ──────────
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["exchanges/tests", "marketdata/tests", "indicators/tests", "risk/tests", "backtest/tests", "strategies/mean_reversion_vwap/tests", "strategies/donchian_breakout/tests", "paper/tests"]
+asyncio_mode = "auto"
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib", "-m", "not integration"]
+markers = [
+    "integration: ходит на реальный testnet биржи, запуск вручную через `pytest -m integration`",
+]
