@@ -14,6 +14,8 @@ const es: DeepPartial<Dict> = {
   },
   hero: {
     badge: 'Fabricante europeo por contrato · GMP · ISO 13485',
+    kineticLead: 'Fabricamos sus',
+    kineticTail: 'bajo su marca.',
     titleLead: 'Del concepto al',
     titleAccent: 'lineal',
     titleTail: 'construimos su marca de inyectables.',
@@ -22,6 +24,21 @@ const es: DeepPartial<Dict> = {
     ctaPrimary: 'Solicitar brief gratuito',
     ctaSecondary: 'Ver el proceso',
     trust: ['Certificado ISO 13485', 'Fabricación GMP', 'Sala limpia Clase B · ISO 7'],
+    facilityChip: 'Nuestra planta GMP · Europa',
+  },
+
+  facility: {
+    kicker: 'Nuestra planta',
+    title: 'Una planta europea real — no un intermediario',
+    subtitle:
+      'Producción de ciclo completo bajo un mismo techo: laboratorio de I+D, salas limpias GMP, llenado aséptico y control de calidad — la planta detrás de su marca.',
+    points: [
+      { value: 'GMP', label: 'Producción certificada' },
+      { value: 'ISO 7', label: 'Sala limpia · Clase B' },
+      { value: 'I+D', label: 'Laboratorio propio' },
+      { value: '360°', label: 'Ciclo completo, un techo' },
+    ],
+    imageAlt: 'Planta de Exemera con el rótulo exe',
   },
   stats: {
     items: [

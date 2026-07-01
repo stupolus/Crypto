@@ -6,6 +6,8 @@ const ko: DeepPartial<Dict> = {
   nav: { services: '서비스', products: '제품', quality: '품질', process: '프로세스', exhibitions: '행사', contact: '문의', cta: '무료 브리프' },
   hero: {
     badge: '유럽 위탁 제조사 · GMP · ISO 13485',
+    kineticLead: '귀사의',
+    kineticTail: '을(를) 귀사 브랜드로 제조합니다.',
     titleLead: '컨셉에서',
     titleAccent: '출시',
     titleTail: '까지, 당신의 주사 미용 브랜드를 만듭니다.',
@@ -14,6 +16,12 @@ const ko: DeepPartial<Dict> = {
     ctaPrimary: '무료 브리프 받기',
     ctaSecondary: '프로세스 보기',
     trust: ['ISO 13485 인증', 'GMP 제조', 'Class B 클린룸 · ISO 7'],
+    facilityChip: '자사 GMP 시설 · 유럽',
+  },
+  facility: {
+    kicker: '자사 시설',
+    title: '중개자가 아닌, 실제 유럽 공장',
+    subtitle: '한 지붕 아래 풀사이클 생산: R&D 실험실, GMP 클린룸, 무균 충전, 품질 관리 — 귀사 브랜드를 뒷받침하는 시설입니다.',
   },
   services: {
     kicker: '턴키 서비스', title: '포뮬러에서 선반까지',

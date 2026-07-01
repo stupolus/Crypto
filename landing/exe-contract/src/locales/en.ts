@@ -15,6 +15,8 @@ const en = {
 
   hero: {
     badge: 'European contract manufacturer · GMP · ISO 13485',
+    kineticLead: 'We manufacture your',
+    kineticTail: 'under your brand.',
     titleLead: 'From concept to',
     titleAccent: 'shelf',
     titleTail: 'we build your injectable brand.',
@@ -23,6 +25,21 @@ const en = {
     ctaPrimary: 'Request your free brief',
     ctaSecondary: 'Explore the process',
     trust: ['ISO 13485 certified', 'GMP manufacturing', 'Cleanroom Class B · ISO 7'],
+    facilityChip: 'Our GMP facility · Europe',
+  },
+
+  facility: {
+    kicker: 'Our facility',
+    title: 'A real European plant — not a middleman',
+    subtitle:
+      'Full-cycle production under one roof: R&D laboratory, GMP cleanrooms, aseptic filling and quality control — the facility that stands behind your brand.',
+    points: [
+      { value: 'GMP', label: 'Certified production' },
+      { value: 'ISO 7', label: 'Cleanroom · Class B' },
+      { value: 'R&D', label: 'In-house laboratory' },
+      { value: '360°', label: 'Full cycle, one roof' },
+    ],
+    imageAlt: 'Exemera manufacturing facility with the exe sign',
   },
 
   stats: {

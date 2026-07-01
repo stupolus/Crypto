@@ -2,6 +2,7 @@ import { motion, useScroll, useSpring } from 'framer-motion'
 import Nav from './components/Nav'
 import Hero from './components/Hero'
 import Stats from './components/Stats'
+import Facility from './components/Facility'
 import Services from './components/Services'
 import Advantages from './components/Advantages'
 import Products from './components/Products'
@@ -26,6 +27,7 @@ export default function App() {
       <main>
         <Hero />
         <Stats />
+        <Facility />
         <Services />
         <Advantages />
         <Products />

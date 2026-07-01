@@ -6,6 +6,8 @@ const ar: DeepPartial<Dict> = {
   nav: { services: 'الخدمة', products: 'المنتجات', quality: 'الجودة', process: 'العملية', exhibitions: 'الفعاليات', contact: 'تواصل', cta: 'موجز مجاني' },
   hero: {
     badge: 'مُصنِّع أوروبي بالتعاقد · GMP · ISO 13485',
+    kineticLead: 'نُصنِّع',
+    kineticTail: 'تحت علامتك.',
     titleLead: 'من الفكرة إلى',
     titleAccent: 'الرفّ',
     titleTail: 'نبني علامتك في الحقن التجميلي.',
@@ -14,6 +16,12 @@ const ar: DeepPartial<Dict> = {
     ctaPrimary: 'اطلب موجزك المجاني',
     ctaSecondary: 'استكشف العملية',
     trust: ['معتمد ISO 13485', 'تصنيع وفق GMP', 'غرفة نظيفة الفئة B · ISO 7'],
+    facilityChip: 'منشأتنا المعتمدة GMP · أوروبا',
+  },
+  facility: {
+    kicker: 'منشأتنا',
+    title: 'مصنع أوروبي حقيقي — لا وسيط',
+    subtitle: 'إنتاج كامل الدورة تحت سقف واحد: مختبر بحث وتطوير، غرف نظيفة GMP، تعبئة معقّمة ومراقبة جودة — المصنع الذي يقف خلف علامتك.',
   },
   services: {
     kicker: 'خدمة متكاملة', title: 'من التركيبة إلى الرفّ',

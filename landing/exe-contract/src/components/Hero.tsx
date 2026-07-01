@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import { motion, useScroll, useTransform, useReducedMotion } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion, useScroll, useTransform, useReducedMotion } from 'framer-motion'
 import { useI18n } from '../i18n'
 import { EASE } from './ui'
 import { img } from '../assets'
@@ -13,7 +13,7 @@ export default function Hero() {
   const yGlow = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : -60])
   const scaleImg = useTransform(scrollYProgress, [0, 1], [1, 1.08])
 
-  const words = t.hero.titleLead.split(' ')
+  const words = t.hero.kineticLead.split(' ')
 
   return (
     <section id="top" ref={ref} className="relative overflow-hidden pt-32 pb-20 md:pt-40 md:pb-28" style={{ background: 'var(--color-cream)' }}>
@@ -41,7 +41,7 @@ export default function Hero() {
             {t.hero.badge}
           </motion.span>
 
-          <h1 className="mt-6 text-[clamp(2.6rem,6.2vw,4.9rem)] leading-[1.02]" style={{ color: 'var(--color-espresso)' }}>
+          <h1 className="mt-6 text-[clamp(2.5rem,6vw,4.7rem)] leading-[1.04]" style={{ color: 'var(--color-espresso)' }}>
             <span className="block overflow-hidden">
               {words.map((w, i) => (
                 <motion.span
@@ -53,24 +53,17 @@ export default function Hero() {
                 >
                   {w}
                 </motion.span>
-              ))}{' '}
-              <motion.span
-                className="italic text-gradient-gold"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.9, ease: EASE, delay: 0.1 + words.length * 0.08 }}
-              >
-                {t.hero.titleAccent}
-              </motion.span>
-              <motion.span
-                className="block"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.9, ease: EASE, delay: 0.3 + words.length * 0.08 }}
-              >
-                {t.hero.titleTail}
-              </motion.span>
+              ))}
             </span>
+            <RotatingWord words={t.products.categories.map((c) => c.name)} />
+            <motion.span
+              className="block"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}
+            >
+              {t.hero.kineticTail}
+            </motion.span>
           </h1>
 
           <motion.p
@@ -107,6 +100,22 @@ export default function Hero() {
               </li>
             ))}
           </motion.ul>
+
+          {/* real facility credibility chip */}
+          <motion.a
+            href="#facility"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: EASE, delay: 0.95 }}
+            className="group mt-8 inline-flex items-center gap-3 rounded-2xl p-1.5 pe-4 transition-all duration-500"
+            style={{ background: 'color-mix(in srgb, var(--color-paper) 70%, white)', border: '1px solid color-mix(in srgb, var(--color-gold-deep) 22%, transparent)', boxShadow: 'var(--shadow-soft)' }}
+          >
+            <img src={img.buildingSign} alt="" className="h-11 w-14 rounded-xl object-cover" />
+            <span className="text-sm font-medium" style={{ color: 'var(--color-espresso)' }}>{t.hero.facilityChip}</span>
+            <span className="transition-transform duration-500 group-hover:translate-x-1 rtl:group-hover:-translate-x-1" style={{ color: 'var(--color-gold-deep)' }}>
+              <Arrow />
+            </span>
+          </motion.a>
         </div>
 
         {/* image */}
@@ -146,6 +155,34 @@ export default function Hero() {
         </motion.div>
       </div>
     </section>
+  )
+}
+
+/** Kinetic word that cycles through the product categories. */
+function RotatingWord({ words }: { words: string[] }) {
+  const reduce = useReducedMotion()
+  const [i, setI] = useState(0)
+  useEffect(() => {
+    if (reduce || words.length < 2) return
+    const id = setInterval(() => setI((v) => (v + 1) % words.length), 2400)
+    return () => clearInterval(id)
+  }, [reduce, words.length])
+
+  return (
+    <span className="relative mt-1 block h-[1.15em] overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={i}
+          className="absolute inset-0 italic text-gradient-gold"
+          initial={{ y: reduce ? 0 : '105%', opacity: reduce ? 1 : 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: reduce ? 0 : '-105%', opacity: reduce ? 1 : 0 }}
+          transition={{ duration: 0.6, ease: EASE }}
+        >
+          {words[i]}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   )
 }
 

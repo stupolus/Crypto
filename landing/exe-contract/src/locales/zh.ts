@@ -6,6 +6,8 @@ const zh: DeepPartial<Dict> = {
   nav: { services: '服务', products: '产品', quality: '质量', process: '流程', exhibitions: '活动', contact: '联系', cta: '免费方案' },
   hero: {
     badge: '欧洲代工制造商 · GMP · ISO 13485',
+    kineticLead: '我们为您生产',
+    kineticTail: '以您的品牌交付。',
     titleLead: '从概念到',
     titleAccent: '货架',
     titleTail: '我们打造您的注射美学品牌。',
@@ -14,6 +16,12 @@ const zh: DeepPartial<Dict> = {
     ctaPrimary: '获取免费方案',
     ctaSecondary: '了解流程',
     trust: ['ISO 13485 认证', 'GMP 生产', 'B 级洁净室 · ISO 7'],
+    facilityChip: '我们的 GMP 工厂 · 欧洲',
+  },
+  facility: {
+    kicker: '我们的工厂',
+    title: '真实的欧洲工厂——而非中间商',
+    subtitle: '一个屋檐下的全流程生产：研发实验室、GMP 洁净室、无菌灌装与质量控制——支撑您品牌的工厂。',
   },
   services: {
     kicker: '一站式服务', title: '从配方到货架',
