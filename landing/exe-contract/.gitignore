@@ -9,3 +9,4 @@ brand/assets/video/
 
 # TypeScript build info
 *.tsbuildinfo
+.vercel
