@@ -1,0 +1,12 @@
+# dependencies / build
+node_modules/
+dist/
+.vercel/
+
+# heavy source media — streamed from CDN in production, source URLs documented
+# in brand/ASSETS.md. Kept out of git to avoid repo bloat.
+brand/assets/video/
+
+# TypeScript build info
+*.tsbuildinfo
+.vercel

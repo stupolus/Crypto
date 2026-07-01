@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Exemera design system — warm pharma-luxury
+   Palette mined from the original brand: espresso + champagne
+   gold + cream, with a cool clinical steel accent from the
+   production photography.
+   ============================================================ */
+@theme {
+  --color-espresso: #2c2420;
+  --color-espresso-deep: #201a16;
+  --color-espresso-900: #191512;
+  --color-ink: #2c2420;
+
+  --color-gold: #c4a97d;
+  --color-gold-soft: #d9c39c;
+  --color-gold-deep: #a89279;
+  --color-gold-muted: #96816a;
+
+  --color-taupe: #b8a99a;
+  --color-cream: #f5f0eb;
+  --color-paper: #fafaf8;
+  --color-steel: #8ba3b8;
+
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-lift: 0 24px 60px -18px rgba(44, 36, 32, 0.35);
+  --shadow-soft: 0 10px 40px -20px rgba(44, 36, 32, 0.25);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    overflow-x: hidden;
+  }
+  ::selection {
+    background: var(--color-gold);
+    color: var(--color-espresso-deep);
+  }
+  /* RTL support for Arabic */
+  [dir='rtl'] body {
+    font-feature-settings: normal;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    line-height: 1.02;
+  }
+}
+
+@layer components {
+  .container-x {
+    width: 100%;
+    max-width: 78rem;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+  @media (min-width: 1024px) {
+    .container-x { padding-inline: 2.5rem; }
+  }
+
+  /* Eyebrow / kicker label */
+  .kicker {
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+
+  /* Thin outlined pill */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-gold) 45%, transparent);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+  }
+
+  /* Primary + ghost buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border-radius: 999px;
+    padding: 0.95rem 1.7rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: transform 0.4s var(--ease-out-expo), box-shadow 0.4s var(--ease-out-expo),
+      background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+    will-change: transform;
+  }
+  .btn-primary {
+    background: var(--color-espresso);
+    color: var(--color-cream);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift);
+  }
+  .btn-gold {
+    background: linear-gradient(135deg, var(--color-gold-soft), var(--color-gold));
+    color: var(--color-espresso-deep);
+    box-shadow: var(--shadow-soft);
+  }
+  .btn-gold:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift);
+  }
+  .btn-ghost {
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    background: transparent;
+  }
+  .btn-ghost:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, currentColor 55%, transparent);
+  }
+
+  /* Card */
+  .card {
+    border-radius: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--color-gold-deep) 22%, transparent);
+    background: color-mix(in srgb, var(--color-paper) 92%, white);
+    transition: transform 0.5s var(--ease-out-expo), box-shadow 0.5s var(--ease-out-expo),
+      border-color 0.5s ease;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lift);
+    border-color: color-mix(in srgb, var(--color-gold) 55%, transparent);
+  }
+}
+
+/* Fine grain texture + utilities */
+@utility text-balance { text-wrap: balance; }
+@utility text-gradient-gold {
+  background: linear-gradient(120deg, var(--color-gold-soft), var(--color-gold) 55%, var(--color-gold-muted));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
